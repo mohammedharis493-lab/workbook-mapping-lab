@@ -1,8 +1,8 @@
-import sys
+﻿import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/"src"))
-from winman_mapper.mapping import discover, apply, load_csv
+from workbook_mapping_lab.mapping import discover, apply, load_csv
 
 ROOT = Path(__file__).resolve().parents[1]/"fixtures"/"synthetic"
 
@@ -31,3 +31,4 @@ class MappingTests(unittest.TestCase):
         self.assertIn('TARGET_NOT_IN_TEMPLATE', [i['issue'] for i in e])
 
 if __name__ == '__main__': unittest.main()
+

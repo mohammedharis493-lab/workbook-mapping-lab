@@ -1,7 +1,7 @@
-"""Deterministic, review-first FS → Winman classification engine.
+﻿"""Deterministic, review-first FS → target workbook classification engine.
 
 Operates only on local CSV extracts or synthetic fixtures. It does not connect to
-Winman, and mapping candidates always require an accountant's approval.
+target workbook, and mapping candidates always require an accountant's approval.
 """
 from __future__ import annotations
 
@@ -113,3 +113,4 @@ def apply(
         "caption": target_index[fid]["caption"], "amount": str(val)
     } for fid, val in sorted(totals.items())]
     return output, exceptions
+

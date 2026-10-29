@@ -1,13 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 from .mapping import apply, discover, load_csv, save_csv
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Winman FS Mapper — review-only prototype")
+    p = argparse.ArgumentParser(description="Workbook Mapping Lab — review-only prototype")
     sub = p.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("discover", help="Suggest PY FS → PY Winman mappings; never auto-approve")
+    a = sub.add_parser("discover", help="Suggest PY FS → PY target workbook mappings; never auto-approve")
     a.add_argument("--previous-fs", required=True)
     a.add_argument("--previous-winman", required=True)
     a.add_argument("--output", required=True)
@@ -33,8 +33,9 @@ def main() -> None:
         rows, issues = apply(src, rules, fields)
         save_csv(args.output, ("field_id", "section", "caption", "amount"), rows)
         save_csv(args.exceptions, ("issue", "source_id", "field_id"), issues)
-        print(f"Mapped {len(rows)} target fields; {len(issues)} exceptions. No Winman files changed.")
+        print(f"Mapped {len(rows)} target fields; {len(issues)} exceptions. No source files changed.")
 
 
 if __name__ == "__main__":
     main()
+
