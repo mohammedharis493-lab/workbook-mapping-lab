@@ -141,5 +141,33 @@ class SimulatorTests(unittest.TestCase):
                       [e["code"] for e in self.run_review()["errors"]])
 
 
+    def test_missing_package_metadata_blocks(self):
+        from zipfile import ZipFile
+        with ZipFile(self.template, "a") as archive:
+            archive.writestr("docProps/core.xml", "<synthetic-metadata/>")
+        filled = self.root / "filled-missing-metadata.xlsx"
+        xlsx(filled, filled=True)
+        result = self.run_review(filled=str(filled))
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("MISSING_PACKAGE_PARTS",
+                      [e["code"] for e in result["errors"]])
+
+    def test_untouched_cell_change_blocks(self):
+        filled = self.root / "filled-wrong-label.xlsx"
+        xlsx(filled, filled=True, bad_anchor=True)
+        result = self.run_review(filled=str(filled))
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("UNEXPECTED_CELL_CHANGE",
+                      [e["code"] for e in result["errors"]])
+
+    def test_import_into_nonempty_template_blocks(self):
+        populated = self.root / "already-filled.xlsx"
+        xlsx(populated, filled=True)
+        result = self.run_review(template=populated)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("NONEMPTY_TARGET",
+                      [e["code"] for e in result["errors"]])
+
+
 if __name__ == "__main__":
     unittest.main()
