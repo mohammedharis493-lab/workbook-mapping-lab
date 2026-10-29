@@ -88,7 +88,8 @@ class WorkbookSnapshot:
             ]
 
         self.sheets: dict[str, dict] = {}
-        for el in main.find(M + "sheets") or []:
+        sheets_element = main.find(M + "sheets")
+        for el in (list(sheets_element) if sheets_element is not None else []):
             name = el.get("name", "")
             location = relations.get(el.get(R + "id"))
             if not location or location not in self.archive.namelist():
@@ -161,6 +162,47 @@ class WorkbookSnapshot:
         }
 
 
+def _check_copy_integrity(base: WorkbookSnapshot, candidate: WorkbookSnapshot,
+                          editable: set[tuple[str, str]]) -> list[dict]:
+    """Conservative gate: never treat re-created workbook formatting as equivalent."""
+    errors = []
+    base_parts = set(base.archive.namelist())
+    copy_parts = set(candidate.archive.namelist())
+    if base_parts - copy_parts:
+        errors.append({"code": "MISSING_PACKAGE_PARTS",
+                       "count": len(base_parts - copy_parts)})
+    if set(base.sheets) != set(candidate.sheets):
+        errors.append({"code": "WORKSHEET_SET_CHANGED"})
+    if list(base.sheets) != list(candidate.sheets):
+        errors.append({"code": "WORKSHEET_ORDER_CHANGED"})
+    if "xl/styles.xml" in base_parts:
+        if "xl/styles.xml" not in copy_parts:
+            errors.append({"code": "STYLES_REMOVED"})
+        elif base.archive.read("xl/styles.xml") != candidate.archive.read("xl/styles.xml"):
+            errors.append({"code": "STYLE_XML_CHANGED"})
+    for sheet, original in base.sheets.items():
+        if sheet not in candidate.sheets:
+            continue
+        updated = candidate.sheets[sheet]
+        if original["state"] != updated["state"]:
+            errors.append({"code": "SHEET_VISIBILITY_CHANGED", "sheet": sheet})
+        if original["merges"] != updated["merges"]:
+            errors.append({"code": "MERGE_LAYOUT_CHANGED", "sheet": sheet})
+        for cell, old in original["cells"].items():
+            if (sheet, cell) in editable:
+                continue
+            new = candidate.cell(sheet, cell)
+            if old["formula"] != new["formula"]:
+                errors.append({"code": "UNEXPECTED_FORMULA_CHANGE",
+                               "sheet": sheet, "cell": cell})
+            if old["value"] != new["value"]:
+                errors.append({"code": "UNEXPECTED_CELL_CHANGE",
+                               "sheet": sheet, "cell": cell})
+            if len(errors) >= 30:
+                return errors
+    return errors
+
+
 def review(template: str, layout: str, values: str, *, filled: str | None = None,
            controls: str | None = None) -> dict:
     """Produce a mock-import report; no workbook bytes are changed.
@@ -177,6 +219,9 @@ def review(template: str, layout: str, values: str, *, filled: str | None = None
     totals = defaultdict(lambda: Decimal("0"))
     with WorkbookSnapshot(template) as wb:
         with WorkbookSnapshot(filled) if filled else _EmptyContext() as filled_wb:
+            if filled_wb is not None:
+                editable = {(row["sheet"], row["cell"].strip().upper()) for row in fields}
+                errors.extend(_check_copy_integrity(wb, filled_wb, editable))
             for row in fields:
                 fid = row["field_id"].strip()
                 dest = (row["sheet"], row["cell"].strip().upper())
