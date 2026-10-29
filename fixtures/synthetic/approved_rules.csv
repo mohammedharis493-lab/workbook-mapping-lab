@@ -1,0 +1,5 @@
+source_id,field_id,approved
+PL-AUDIT,PL-AUDIT-FEE,yes
+PL-OTHER,PL-OTHER-EXP,yes
+BS-LOAN,BS-UNSECURED,yes
+BS-CASH,BS-CASHBANK,yes
