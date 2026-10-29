@@ -42,12 +42,12 @@ def normalized(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
 
-def discover(previous_fs: list[dict], previous_winman: list[dict]) -> list[dict]:
+def discover(previous_fs: list[dict], previous_target: list[dict]) -> list[dict]:
     """Suggest previous-year mappings; suggestions are never auto-approved."""
     result = []
     for src in previous_fs:
         candidates = []
-        for field in previous_winman:
+        for field in previous_target:
             if normalized(src["section"]) != normalized(field["section"]):
                 continue
             if money(src["amount"]) != money(field["amount"]):
@@ -113,4 +113,5 @@ def apply(
         "caption": target_index[fid]["caption"], "amount": str(val)
     } for fid, val in sorted(totals.items())]
     return output, exceptions
+
 

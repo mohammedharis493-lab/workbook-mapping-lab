@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]/"fixtures"/"synthetic"
 class MappingTests(unittest.TestCase):
     def test_discovery_never_approves(self):
         s = load_csv(ROOT/"previous_fs.csv", ("source_id", "section", "caption", "amount"))
-        w = load_csv(ROOT/"previous_winman.csv", ("field_id", "section", "caption", "amount"))
+        w = load_csv(ROOT/"previous_target.csv", ("field_id", "section", "caption", "amount"))
         matches = discover(s,w)
         self.assertEqual(len(matches), 4)
         self.assertTrue(all(m["approved"] == "no" for m in matches))
@@ -31,4 +31,5 @@ class MappingTests(unittest.TestCase):
         self.assertIn('TARGET_NOT_IN_TEMPLATE', [i['issue'] for i in e])
 
 if __name__ == '__main__': unittest.main()
+
 

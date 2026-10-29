@@ -9,7 +9,7 @@ def main() -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("discover", help="Suggest PY FS → PY target workbook mappings; never auto-approve")
     a.add_argument("--previous-fs", required=True)
-    a.add_argument("--previous-winman", required=True)
+    a.add_argument("--previous-target", required=True)
     a.add_argument("--output", required=True)
     b = sub.add_parser("apply", help="Apply accountant-approved rules to CY FS")
     b.add_argument("--current-fs", required=True)
@@ -20,7 +20,7 @@ def main() -> None:
     args = p.parse_args()
     if args.cmd == "discover":
         src = load_csv(args.previous_fs, ("source_id", "section", "caption", "amount"))
-        target = load_csv(args.previous_winman, ("field_id", "section", "caption", "amount"))
+        target = load_csv(args.previous_target, ("field_id", "section", "caption", "amount"))
         rows = discover(src, target)
         save_csv(args.output,
                  ("source_id", "section", "source_caption", "suggested_field_id",
@@ -38,4 +38,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
