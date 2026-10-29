@@ -1,0 +1,5 @@
+field_id,section,caption,amount
+PL-AUDIT-FEE,PL,Audit fees,10000
+PL-OTHER-EXP,PL,Other expenses,1500
+BS-UNSECURED,BS,Unsecured loans,250000
+BS-CASHBANK,BS,Cash and bank,12000
