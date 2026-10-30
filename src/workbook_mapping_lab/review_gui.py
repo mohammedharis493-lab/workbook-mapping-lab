@@ -220,6 +220,122 @@ class ReviewDesk(tk.Tk):
             raise ValueError(f"Select {key.replace('_',' ')}")
         return val
 
+    def _warning_key(self, item):
+        return "|".join((item.get("code",""),item.get("period",""),item.get("title","")))
+
+    def refresh_warnings(self):
+        """Independent evidence checks; never alter approved mappings."""
+        previous=self._file("previous",False)
+        prior_irs=self._file("previous_target",False)
+        current=self._file("source",False)
+        try:
+            self.advisory_items=check_advisories(previous,prior_irs,current or None)
+        except (ValueError,KeyError,OSError) as err:
+            self.advisory_items=[advisory(
+                "EVIDENCE_CHECK_INCOMPLETE",
+                "Could not verify historical classification evidence",
+                "One or more selected workbooks could not be interpreted: "+str(err),
+                "Review the input workbook layouts. The mapping workflow is unaffected.",
+                severity="Info",
+            )]
+        self._draw_warnings()
+        flagged=sum(item["severity"]=="Review" for item in self.advisory_items)
+        self.status.set(f"Advisory review: {flagged} issue(s) to consider; "
+                        "none prevent preparation or change figures.")
+        return self.advisory_items
+
+    def _draw_warnings(self):
+        self.warning_table.delete(*self.warning_table.get_children())
+        for n,item in enumerate(self.advisory_items):
+            decision=self.advisory_decisions.get(self._warning_key(item),{})
+            status="Reviewed" if decision.get("acknowledged") else "Not reviewed"
+            self.warning_table.insert("",tk.END,iid=str(n),values=(
+                item["severity"],item["period"],item["title"],
+                item.get("difference") or "—",status))
+        self.warning_note.set("")
+        self.warning_details.config(state="normal")
+        self.warning_details.delete("1.0","end")
+        self.warning_details.insert("end",
+                                    "Select a warning to see the source references, explanation and suggested review.")
+        self.warning_details.config(state="disabled")
+
+    def _warning_selected(self):
+        selected=self.warning_table.selection()
+        if not selected:
+            return
+        item=self.advisory_items[int(selected[0])]
+        state=self.advisory_decisions.get(self._warning_key(item),{})
+        self.warning_note.set(state.get("note",""))
+        lines=[
+            item["title"],
+            "",
+            item["explanation"],
+            "",
+            "Suggested check: "+item["suggested_action"],
+            "",
+            "Source evidence:",
+        ]
+        for proof in item.get("evidence",[]):
+            location=proof.get("sheet","")+"!"+proof.get("cell","")
+            lines.append("  "+proof.get("source","")+" | "+location+" | "+
+                         proof.get("description","")+": "+
+                         proof.get("amount",proof.get("text","")))
+        lines.extend(["","This is a non-blocking advisory. Only explicit mapping approvals can change the output."])
+        self.warning_details.config(state="normal")
+        self.warning_details.delete("1.0","end")
+        self.warning_details.insert("end","\n".join(lines))
+        self.warning_details.config(state="disabled")
+
+    def acknowledge_warning(self):
+        selection=self.warning_table.selection()
+        if not selection:
+            self.status.set("Select a warning before marking it reviewed.")
+            return
+        item=self.advisory_items[int(selection[0])]
+        self.advisory_decisions[self._warning_key(item)]={
+            "acknowledged":True, "note":self.warning_note.get().strip()[:600],
+        }
+        self._draw_warnings()
+        self.warning_table.selection_set(selection[0])
+        self._warning_selected()
+        self.status.set("Warning marked reviewed; financial data and mapping remain unchanged.")
+
+    def reopen_warning(self):
+        selection=self.warning_table.selection()
+        if not selection:
+            return
+        item=self.advisory_items[int(selection[0])]
+        previous=self.advisory_decisions.get(self._warning_key(item),{})
+        self.advisory_decisions[self._warning_key(item)]={
+            "acknowledged":False, "note":previous.get("note",""),
+        }
+        self._draw_warnings()
+        self.warning_table.selection_set(selection[0])
+        self._warning_selected()
+        self.status.set("Warning reopened; this does not restrict workbook generation.")
+
+    def save_warnings(self):
+        try:
+            from datetime import datetime
+            folder=require_private_directory(self._file("folder"))
+            dest=folder/("advisory_warnings_PRIVATE_"+
+                         datetime.now().strftime("%Y%m%d_%H%M%S_%f")+".json")
+            records=[]
+            for w in self.advisory_items:
+                entry=dict(w)
+                decision=self.advisory_decisions.get(self._warning_key(w),{})
+                entry["acknowledged"]=bool(decision.get("acknowledged"))
+                entry["reviewer_note"]=decision.get("note","")
+                records.append(entry)
+            dest.write_text(json.dumps({
+                "purpose":"Optional accounting warnings; no mappings changed",
+                "not_a_release_gate":True,
+                "warnings":records,
+            },indent=2),encoding="utf-8")
+            self.status.set("Private warnings report saved; no financial data modified.")
+        except Exception as err:
+            self._show_error(err)
+
     def load_selected(self):
         try:
             source=self._file("source")
