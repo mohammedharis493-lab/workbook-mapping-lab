@@ -45,3 +45,15 @@ contrast, absence of horizontal overflow or usability at 200% zoom.
 **Release status:** code-level fixes can pass public GitHub CI independently,
 but M5.1 remains **PENDING_RENDERED_BROWSER_VERIFICATION** until these actual
 browser checks are recorded. Do not claim a visual test was run on GitHub CI.
+
+## M5.1 keyboard-focus retention — additional source-level fix
+
+A source audit on 2026-10-31 found that selecting a warning rebuilt the entire
+warning-button list. The active keyboard-focused button was thereby detached,
+interrupting keyboard navigation. The updated selector changes the existing
+buttons' selected state and the detail panel **in place**, preserving the
+focused DOM node. A fifth synthetic static contract test guards this path.
+
+This is a code-level correction, **not** observed browser acceptance. The
+required Chrome keyboard and native 200% zoom review remains open; neither
+PR merging nor a passing unit suite marks M5.1 complete.

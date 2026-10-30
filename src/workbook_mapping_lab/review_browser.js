@@ -205,7 +205,17 @@ function renderWarnings(){
  if(selectedWarning>=warnings.length)selectedWarning=-1;
  if(selectedWarning>=0)showWarningDetail(warnings[selectedWarning]);
 }
-function selectWarning(index){selectedWarning=index;renderWarnings();}
+function selectWarning(index) {
+ selectedWarning=index;
+ // Preserve keyboard focus: replacing a clicked button would detach it.
+ document.querySelectorAll('#warning-list .warning-card').forEach((card,n)=>{
+  const active=n===index;
+  card.classList.toggle('active',active);
+  card.setAttribute('aria-pressed',String(active));
+ });
+ const warning=(state.warnings||[])[index];
+ if(warning)showWarningDetail(warning);
+}
 function showWarningDetail(w) {
  $('warning-title').textContent=w.title;
  const provenance=[];
