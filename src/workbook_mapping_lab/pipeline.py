@@ -15,6 +15,7 @@ from pathlib import Path
 from .allocations import number, plan_allocations, ready_to_release
 from .mapping import load_csv
 from .writer import populate
+from .template_contract import detail_coverage
 
 
 def _csv(path: str, columns: tuple[str, ...], rows: list[dict]) -> None:
@@ -30,6 +31,7 @@ def controlled_build(
     *, source: str, rules: str, layout: str, template: str,
     source_controls: str, output_controls: str, output: str,
     exception_report: str, rounding: str = "exact",
+    previous_export: str | None = None,
 ) -> dict:
     """Create the final workbook only after all mapping and control checks pass.
 
@@ -44,6 +46,15 @@ def controlled_build(
     source_totals = load_csv(source_controls, ("section", "amount"))
     required_output_totals = load_csv(output_controls, ("section", "total"))
     out, issues, trace = plan_allocations(inputs, mappings, fields, expected_totals=source_totals)
+    # The exact user/vendor export is immutable. A current blank export can
+    # omit detailed worksheets that were active in the prior-year export.
+    # Never silently replace those with broad parent fields.
+    if previous_export:
+        contract=detail_coverage(previous_export,template)
+        for item in contract["missing_active_detail_sheets"]:
+            issues.append({"issue":"VENDOR_TEMPLATE_DETAIL_MISSING",
+                           "source_id":"","field_id":"",
+                           "detail":item["sheet"]})
 
     output_sections = defaultdict(lambda: Decimal(0))
     deviations = []
@@ -125,11 +136,13 @@ def main() -> None:
     for key in ("source","rules","layout","template","source-controls","output-controls","output","exception-report"):
         p.add_argument("--"+key, required=True)
     p.add_argument("--rounding",choices=("exact","whole_rupees"),default="exact")
+    p.add_argument("--previous-export",help="Optional historical populated vendor export used to block missing detail schedules")
     a=p.parse_args()
     report=controlled_build(
         source=a.source, rules=a.rules,layout=a.layout,template=a.template,
         source_controls=a.source_controls,output_controls=a.output_controls,
-        output=a.output,exception_report=a.exception_report,rounding=a.rounding)
+        output=a.output,exception_report=a.exception_report,rounding=a.rounding,
+        previous_export=a.previous_export)
     print(json.dumps({k:v for k,v in report.items() if k not in ("trace","rounding_differences")},indent=2))
     if report["status"]!="PASS":
         raise SystemExit(2)
