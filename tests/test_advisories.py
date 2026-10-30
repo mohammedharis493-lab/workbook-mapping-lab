@@ -8,7 +8,7 @@ from zipfile import ZipFile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
 from test_simulator import NS,REL,PKG
-from workbook_mapping_lab.advisories import check_creditor_ageing,check_advisories
+from workbook_mapping_lab.advisories import check_creditor_ageing,check_advisories,evaluate_evidence_rules
 
 
 def workbook(path,sheets):
@@ -118,6 +118,59 @@ class AdvisoryTests(unittest.TestCase):
         results=check_advisories(str(self.fs),str(self.itr))
         self.assertIn("PRIOR_CREDITOR_AGE_CLASSIFICATION",[w["code"] for w in results])
         self.assertNotIn("PRIOR_CREDITOR_PARENT_TOTAL_DIFFERENCE",[w["code"] for w in results])
+
+
+    def test_custom_rule_warns_without_changing_files(self):
+        original_fs=self.fs.read_bytes()
+        original_itr=self.itr.read_bytes()
+        custom=[{
+            "code":"CHECK_AGE_GT1",
+            "title":"Older creditors inconsistent",
+            "source_kind":"previous_fs",
+            "source_sheet":"New Disclosure",
+            "source_cells":["D5","E5","F5"],
+            "target_kind":"previous_return",
+            "target_sheet":"Creditors",
+            "target_cell":"B5",
+            "tolerance":"0",
+            "period":"Previous year",
+        }]
+        found=evaluate_evidence_rules(
+            {"previous_fs":str(self.fs),"previous_return":str(self.itr)},custom)
+        self.assertEqual(len(found),1)
+        self.assertEqual(found[0]["difference"],"30")
+        self.assertFalse(found[0]["blocking"])
+        self.assertEqual(self.fs.read_bytes(),original_fs)
+        self.assertEqual(self.itr.read_bytes(),original_itr)
+
+    def test_custom_rule_with_tolerance_does_not_overwarn(self):
+        rule=[{"code":"CHECK_WITH_TOLERANCE","title":"Small rounding difference",
+               "source_kind":"previous_fs","source_sheet":"New Disclosure",
+               "source_cells":["D5","E5","F5"],
+               "target_kind":"previous_return","target_sheet":"Creditors",
+               "target_cell":"B5","tolerance":"30"}]
+        result=evaluate_evidence_rules({
+            "previous_fs":str(self.fs),"previous_return":str(self.itr)},rule)
+        self.assertEqual(result,[])
+
+    def test_missing_workbook_for_custom_rule_is_nonblocking_info(self):
+        rule=[{"code":"CHECK_NODATA","source_kind":"current_fs",
+               "source_sheet":"Data","source_cells":["D9"],
+               "target_kind":"previous_return","target_sheet":"Creditors",
+               "target_cell":"B5"}]
+        result=evaluate_evidence_rules({"current_fs":"","previous_return":str(self.itr)},rule)
+        self.assertEqual(len(result),1)
+        self.assertEqual(result[0]["severity"],"Info")
+        self.assertFalse(result[0]["blocking"])
+
+    def test_invalid_custom_rule_config_is_rejected(self):
+        with self.assertRaises(ValueError):
+            evaluate_evidence_rules({},[{
+                "code":"CHECK_UNSAFE","source_kind":"previous_fs",
+                "source_sheet":"Note","source_cells":["C1;DROP"],
+                "target_kind":"previous_return","target_sheet":"Creditors",
+                "target_cell":"B5"}])
+
 
 
 if __name__=="__main__":
