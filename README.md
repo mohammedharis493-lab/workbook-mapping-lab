@@ -9,6 +9,7 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 - Historical mapping suggestions even when the target workbook row positions move
 - **Entity-specific ITR schema profiles:** never assume identical assets, liabilities, schedules or subcomponents across different entities; validate entity, AY, return type and native template before reusing a mapping
 - **Review-first native field discovery wizard:** scans the current entity's actual export for candidate labels and blank destinations; requires explicit review of applicable sections before saving a private profile ([workflow](docs/NATIVE_SCHEMA_DISCOVERY.md))
+- **Native import destination coverage:** checks original blank Winman XLSX fields independently against a completed ITR-6 and reviewed FS comparison contract; missing slots are blocked, not invented ([workflow](docs/NATIVE_IMPORT_COVERAGE.md))
 - Explicit required/optional/not-applicable/needs-review field states, with no invented zero values for absent optional subcomponents
 - Local Windows exception-review desk with explicit approval and private exports
 - Separate **non-blocking Warnings** tab comparing historical classifications with supporting FS evidence

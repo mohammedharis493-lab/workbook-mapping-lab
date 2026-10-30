@@ -146,6 +146,53 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["private_report"]).exists())
         self.assertEqual(before,(self.output.read_bytes(),reference.read_bytes()))
 
+    def test_native_import_checker_is_read_only_and_saves_private_report(self):
+        ref=self.root/"independent.xlsm"
+        native(ref,["ITR BS"],{"ITR BS":{
+            "A10":"Cash holdings","E10":100,
+            "A11":"Loans","E11":100
+        }},hidden_sheets=("ITR BS",))
+        contract=self.root/"intake_private.csv"
+        write_csv(contract,(
+            "field_id","expected_amount","generated_sheet","generated_label",
+            "generated_value_col","manual_sheet","manual_label",
+            "manual_value_col","manual_label_cell"),[
+            ("CASH",100,"Balance Sheet","Cash","B","ITR BS","Cash holdings","E","A10"),
+            ("LOAN",100,"Balance Sheet","Loans","B","ITR BS","Loans","E","A11")
+        ])
+        before=self.template.read_bytes(),ref.read_bytes()
+        self.w.set_config({
+            "completed_reference":str(ref),"benchmark_contract":str(contract)
+        })
+        r=self.w.check_native_import_intake()["latest_import_intake"]
+        self.assertEqual(r["status"],"READY_FOR_ACCOUNTANT_MAPPING_REVIEW")
+        self.assertEqual(r["field_count"],2)
+        self.assertEqual(r["import_cells_available"],2)
+        self.assertTrue(Path(r["private_report"]).exists())
+        self.assertFalse(self.output.exists())
+        self.assertEqual(before,(self.template.read_bytes(),ref.read_bytes()))
+
+    def test_replacement_export_checked_without_changing_selected_template(self):
+        ref=self.root/"independent.xlsm"
+        native(ref,["ITR BS"],{"ITR BS":{"A10":"Cash","E10":100}})
+        contract=self.root/"intake.csv"
+        write_csv(contract,(
+            "field_id","expected_amount","generated_sheet","generated_label",
+            "generated_value_col","manual_sheet","manual_label",
+            "manual_value_col","manual_label_cell"),[
+            ("CASH",100,"Balance Sheet","Cash","B","ITR BS","Cash","E","A10")
+        ])
+        replacement=self.root/"replacement.xlsx"
+        replacement.write_bytes(self.template.read_bytes())
+        self.w.set_config({
+            "intake_template":str(replacement),
+            "completed_reference":str(ref),"benchmark_contract":str(contract)
+        })
+        result=self.w.check_native_import_intake()["latest_import_intake"]
+        self.assertEqual(result["import_cells_available"],1)
+        self.assertEqual(self.w.config["template"],str(self.template))
+        self.assertIsNone(self.w.latest_saved)
+
     def test_browser_discovers_reviewed_profile_and_checked_build(self):
         untouched=self.template.read_bytes()
         state=self.w.discover_entity_candidates()
