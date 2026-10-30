@@ -135,5 +135,31 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(canonical_caption("  Bank Balance/ Accounts "),"bank-balance-accounts")
 
 
+    def test_watched_new_item_blocks_release(self):
+        self.profile["watch_ranges"]=[{
+            "sheet":"Statement","caption_column":"A","current_column":"C",
+            "start_row":6,"end_row":9,"ignore_rows":[7],
+        }]
+        _, issues=extract_profile(str(self.now),self.profile)
+        self.assertIn("NEW_UNREVIEWED_NUMERIC_DETAIL",[x["issue"] for x in issues])
+        self.assertTrue(any("C8" in x["detail"] for x in issues))
+
+    def test_watched_zero_and_explicit_ignored_row_not_blocked(self):
+        self.profile["watch_ranges"]=[{
+            "sheet":"Statement","caption_column":"A","current_column":"C",
+            "start_row":2,"end_row":5,"ignore_rows":[5],
+        }]
+        _, issues=extract_profile(str(self.now),self.profile)
+        self.assertFalse(any(x["issue"]=="NEW_UNREVIEWED_NUMERIC_DETAIL" for x in issues))
+
+    def test_missing_watched_sheet_blocks(self):
+        self.profile["watch_ranges"]=[{
+            "sheet":"Renamed","caption_column":"A","current_column":"C",
+            "start_row":1,"end_row":8,
+        }]
+        _,issues=extract_profile(str(self.now),self.profile)
+        self.assertIn("MISSING_WATCH_WORKSHEET",[x["issue"] for x in issues])
+
+
 if __name__=="__main__":
     unittest.main()
