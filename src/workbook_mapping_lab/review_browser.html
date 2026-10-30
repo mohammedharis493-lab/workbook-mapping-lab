@@ -147,6 +147,20 @@
    <p class="safety-note"><strong>Originals are protected.</strong> Missing Winman schedules or unreconciled amounts block the checked copy. Advisory warnings do not.</p>
    <div class="actions"><button id="review-export">Save mapping review</button><button id="build-copy" class="primary">Build &amp; verify copy</button></div>
    <p id="build-result" class="muted result-line">No output generated in this session.</p>
+   <details class="advanced" id="native-import-intake-section">
+    <summary>Check native import field coverage <span class="summary-hint">Original XLSX and independently completed ITR</span></summary>
+    <div class="advanced-content">
+     <p class="muted">Inspect each field in the private comparison contract against the actual Winman import XLSX and independently completed ITR-6. Equal amounts do not guarantee an import destination.</p>
+     <div id="native-import-intake-inputs" class="form-grid"></div>
+     <p class="muted">Optional replacement export path. Leave blank to check the current native template above. Configure the completed ITR and private comparison contract below.</p>
+     <div class="actions"><button id="native-import-intake-run" type="button">Check import destinations</button></div>
+     <p id="native-import-intake-summary" class="result-line muted" role="status">Not checked in this session.</p>
+     <div class="table-shell">
+      <table id="native-import-intake-table"><thead><tr><th>Field</th><th>Native destination</th><th>Completed ITR</th><th>Assessment</th></tr></thead>
+       <tbody><tr><td colspan="4" class="empty">Run the read-only native import check.</td></tr></tbody></table>
+     </div>
+    </div>
+   </details>
    <details class="advanced" id="benchmark-section">
     <summary>Compare with completed ITR <span class="summary-hint">Independent, read-only benchmark</span></summary>
     <div class="advanced-content">

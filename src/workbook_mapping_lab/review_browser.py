@@ -1,4 +1,4 @@
-﻿"""Local-only browser review desk over the existing accountant-reviewed engine.
+"""Local-only browser review desk over the existing accountant-reviewed engine.
 
 No cloud, login, network binding, telemetry, client-data upload, or external API.
 The browser is a presentation layer; all workbook/approval rules are reused.
@@ -29,6 +29,7 @@ from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
 from .manual_benchmark import compare_completed_return
+from .import_intake import inspect_native_import_coverage
 from .export_preflight import preflight_export
 from .entity_schema import load_entity_profile, inspect_entity_profile
 from .schema_discovery import (discover_entity_fields, set_candidate_decision,
@@ -40,6 +41,7 @@ CONFIG_KEYS = frozenset((
     "template", "output", "detail_routes", "companion_details", "advisory_rules",
     "benchmark_generated", "completed_reference", "benchmark_contract",
     "entity_schema_profile", "entity_key", "assessment_year", "itr_form",
+    "intake_template",
 ))
 STATIC = {
     "/": ("review_browser.html", "text/html; charset=utf-8"),
@@ -67,6 +69,7 @@ class Workspace:
         self.latest_benchmark: dict | None = None
         self.latest_preflight: dict | None = None
         self.latest_entity_schema: dict | None = None
+        self.latest_import_intake: dict | None = None
         self.entity_discovery: dict | None = None
         self.profile = None
         self.lock = threading.RLock()
@@ -92,6 +95,7 @@ class Workspace:
             "latest_benchmark": self.latest_benchmark,
             "latest_preflight": self.latest_preflight,
             "latest_entity_schema": self.latest_entity_schema,
+            "latest_import_intake": self.latest_import_intake,
             "entity_discovery": self.entity_discovery,
         }
 
@@ -121,6 +125,7 @@ class Workspace:
             self.latest_benchmark = None
             self.latest_preflight = None
             self.latest_entity_schema = None
+            self.latest_import_intake = None
         return self.data()
 
     def refresh_warnings(self) -> dict:
@@ -278,6 +283,28 @@ class Workspace:
         )
         return self.data()
 
+    def check_native_import_intake(self) -> dict:
+        """Read-only 13-field-style import target and completed return comparison."""
+        template = self.file("intake_template", False) or self.file("template")
+        result = inspect_native_import_coverage(
+            template, self.file("completed_reference"),
+            self.file("benchmark_contract"),
+        )
+        private = self._new_file("native_import_coverage_PRIVATE_", ".json")
+        with private.open("x", encoding="utf-8") as out:
+            json.dump(result, out, indent=2, ensure_ascii=False)
+        self.latest_import_intake = {
+            "status": result["status"],
+            "field_count": result["field_count"],
+            "import_cells_available": result["import_cells_available"],
+            "import_cells_unavailable": result["import_cells_unavailable"],
+            "reference_mismatches": result["reference_mismatches"],
+            "ready_for_accountant_review": result["ready_for_accountant_review"],
+            "rows": result["rows"],
+            "private_report": str(private),
+        }
+        return self.data()
+
     def benchmark_completed(self) -> dict:
         """Independent reference check with no workbook writes or approvals."""
         selected = self.file("benchmark_generated", False) or self.file("output")
@@ -415,6 +442,7 @@ def create_server(workspace: Workspace, *, port: int = 0):
         "/api/save-review": lambda _: workspace.save_review(),
         "/api/build": lambda _: workspace.build(),
         "/api/benchmark-completed": lambda _: workspace.benchmark_completed(),
+        "/api/native-import-intake": lambda _: workspace.check_native_import_intake(),
         "/api/template-readiness": lambda _: workspace.check_template_readiness(),
         "/api/entity-schema-check": lambda _: workspace.check_entity_schema(),
         "/api/entity-discover": lambda _: workspace.discover_entity_candidates(),

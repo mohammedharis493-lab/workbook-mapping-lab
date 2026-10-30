@@ -73,6 +73,9 @@ fieldInputs($('source-advanced-inputs'),sourceKeys.filter(([key])=>!['source','p
 fieldInputs($('build-inputs'),buildKeys.filter(([key])=>['template','output'].includes(key)));
 fieldInputs($('build-advanced-inputs'),buildKeys.filter(([key])=>!['template','output'].includes(key)));
 fieldInputs($('benchmark-inputs'),benchmarkKeys);
+fieldInputs($('native-import-intake-inputs'),[
+ ['intake_template','Optional new native import XLSX to inspect (read-only)']
+]);
 fieldInputs($('entity-schema-inputs'),entityKeys);
 function collectPaths() {
  const updates={};
@@ -295,6 +298,36 @@ function renderEntitySchema(){
    ' applicability decisions pending.':
    'Not validated. Build copy requires this entity, year, form and approved schema.';
 }
+function renderImportIntake(){
+ const report=state.latest_import_intake;
+ const tbody=$('native-import-intake-table').tBodies[0];
+ tbody.replaceChildren();
+ if(!report){
+  $('native-import-intake-summary').textContent=
+   'Not checked in this session. This test does not change the import template.';
+  emptyRow($('native-import-intake-table'),'Run the read-only native import check.',4);
+  return;
+ }
+ $('native-import-intake-summary').textContent=
+  report.import_cells_available+' of '+report.field_count+' native import destinations ready; '+
+  report.import_cells_unavailable+' unavailable; '+
+  report.reference_mismatches+' completed-return reference differences. '+
+  'Private evidence: '+report.private_report;
+ report.rows.forEach(item=>{
+  const tr=tbody.insertRow();
+  cell(tr,item.field_id);
+  cell(tr,item.native_target ?
+     item.native_target.sheet+'!'+item.native_target.cell :
+     'Unavailable: '+item.native_exceptions.map(e=>e.code).join(', '));
+  cell(tr,item.completed_reference_status==='REFERENCE_MATCHES_FS'?
+    'Matches FS amount':'Review: '+item.completed_reference_status);
+  const status=cell(tr,'');
+  status.append(node('span',item.verdict==='READY_FOR_ACCOUNTANT_MAPPING_REVIEW'?
+    'Cell available':item.native_target?'Review evidence':'Import slot missing',
+    'pill '+(item.verdict==='READY_FOR_ACCOUNTANT_MAPPING_REVIEW'?
+              'approved':'needs_review')));
+ });
+}
 function renderBenchmark(){
  const record=state.latest_benchmark;
  const body=$('benchmark-table').tBodies[0];body.replaceChildren();
@@ -340,7 +373,7 @@ function renderTemplatePreflight(){
  });
 }
 function render(){
- renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();renderEntitySchema();renderEntityDiscovery();
+ renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderImportIntake();renderTemplatePreflight();renderEntitySchema();renderEntityDiscovery();
 }
 async function run(task,msg) {
  try{
@@ -431,6 +464,12 @@ $('entity-schema-run').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/entity-schema-check');render();
  $('entity-schema-section').open=true;
 },'Entity-specific schema checked against the original export.'));
+$('native-import-intake-run').addEventListener('click',()=>run(async()=>{
+ await syncPaths();
+ state=await api('/api/native-import-intake');
+ render();
+ $('native-import-intake-section').open=true;
+ },'Read-only target coverage report saved privately. Original files unchanged.'));
 $('benchmark-run').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/benchmark-completed');render();
  $('benchmark-section').open=true;

@@ -64,7 +64,8 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(code,200)
         for marker in (
             b'id="source-advanced-inputs"',b'id="build-advanced-inputs"',
-            b'id="build-gate-status"',b'id="view-menu"',b'id="reader-lens"',b'id="benchmark-section"',b'id="benchmark-run"',b'id="entity-discover"',b'id="entity-discovery-table"',
+            b'id="build-gate-status"',b'id="view-menu"',b'id="reader-lens"',b'id="benchmark-section"',b'id="benchmark-run"',b'id="native-import-intake-section"',
+            b'id="native-import-intake-table"',b'id="native-import-intake-run"',b'id="entity-discover"',b'id="entity-discovery-table"',
             b'id="entity-discovery-export"',b'id="entity-candidate-applicability"',
             b'id="mapping-table"',b'id="warning-list"'
         ):
