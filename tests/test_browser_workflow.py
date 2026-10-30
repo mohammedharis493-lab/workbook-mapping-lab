@@ -1,4 +1,4 @@
-﻿"""Synthetic browser-workspace acceptance: FS -> review -> original export copy."""
+"""Synthetic browser-workspace acceptance: FS -> review -> original export copy."""
 import json
 import hashlib
 import sys
@@ -145,6 +145,54 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.assertEqual(result["unavailable_targets"],0)
         self.assertTrue(Path(result["private_report"]).exists())
         self.assertEqual(before,(self.output.read_bytes(),reference.read_bytes()))
+
+    def test_browser_discovers_reviewed_profile_and_checked_build(self):
+        untouched=self.template.read_bytes()
+        state=self.w.discover_entity_candidates()
+        scan=state["entity_discovery"]
+        self.assertEqual(scan["matched_existing_layout"],4)
+        self.assertTrue(all(not item["reviewed"] for item in scan["candidates"]))
+        selected=[item for item in scan["candidates"] if item["selected"]]
+        self.assertEqual(len(selected),4)
+        for item in selected:
+            updated=self.w.review_entity_candidate({
+                "candidate_id":item["candidate_id"],
+                "selected":True,
+                "field_id":item["field_id"],
+                "section":item["section"],
+                "applicability":"required",
+            })
+        created=self.w.export_entity_candidate_profile()
+        self.assertTrue(Path(created["path"]).exists())
+        self.assertEqual(created["latest_entity_schema"]["status"],"READY_FOR_MAPPING_REVIEW")
+        self.assertEqual(self.template.read_bytes(),untouched)
+        self.w.extract()
+        mapping={"Cash":"B-CASH","Loans":"B-LOAN",
+                 "Audit expenses":"P-AUDIT","Registration costs":"P-OTHER"}
+        for entry in self.w.data()["entries"]:
+            self.w.approve({"source_id":entry["source_id"],
+                            "field_id":mapping[entry["caption"]]})
+        self.w.save_review()
+        result=self.w.build()
+        self.assertEqual(result["result"]["status"],"PASS")
+        self.assertEqual(self.template.read_bytes(),untouched)
+
+    def test_browser_discovery_export_fails_when_fields_are_unreviewed(self):
+        data=self.w.discover_entity_candidates()
+        self.assertTrue(data["entity_discovery"]["matched_existing_layout"])
+        with self.assertRaisesRegex(ValueError,"explicit applicability"):
+            self.w.export_entity_candidate_profile()
+        self.assertEqual(self.w.config["entity_schema_profile"],str(self.entity_manifest))
+
+    def test_browser_discovery_invalidated_when_target_template_changes(self):
+        data=self.w.discover_entity_candidates()
+        self.assertIsNotNone(data["entity_discovery"])
+        other=self.root/"different.xlsx"
+        other.write_bytes(self.template.read_bytes())
+        self.w.set_config({"template":str(other)})
+        self.assertIsNone(self.w.entity_discovery)
+        with self.assertRaisesRegex(ValueError,"Scan"):
+            self.w.export_entity_candidate_profile()
 
     def test_missing_schema_blocks_even_after_approved_mapping(self):
         self.w.extract()
