@@ -240,8 +240,27 @@ function renderBenchmark(){
     'pill '+(item.status==='MATCH'?'approved':'needs_review')));
  });
 }
+function renderTemplatePreflight(){
+ const current=state.latest_preflight;
+ const status=$('template-readiness-status');
+ const list=$('template-readiness-list');
+ list.replaceChildren();
+ if(!current){
+  status.textContent='Not checked in this session.';
+  return;
+ }
+ status.textContent=current.status+' · '+current.current_sheet_count+
+  ' current worksheets · '+current.detail_fields_resolved+
+  '/'+current.detail_fields_requested+' configured detail fields located. '+current.next_step;
+ (current.missing_sheets||[]).forEach(sheet=>{
+  list.append(node('li','Missing native detail worksheet: '+sheet));
+ });
+ (current.field_issues||[]).forEach(issue=>{
+  list.append(node('li','Field '+(issue.field_id||'')+': '+issue.code));
+ });
+}
 function render(){
- renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();
+ renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();
 }
 async function run(task,msg) {
  try{
@@ -255,6 +274,12 @@ async function run(task,msg) {
 $('mapping-search').addEventListener('input',renderMapping);
 $('save-paths').addEventListener('click',()=>run(async()=>{
  await syncPaths();render();},'Local paths updated for this session.'));
+$('template-readiness-run').addEventListener('click',()=>run(async()=>{
+ await syncPaths();
+ state=await api('/api/template-readiness');
+ render();
+ $('template-diagnostics').open=true;
+ },'Read-only official export inspection completed.'));
 $('extract').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/extract');selectedSource='';selectedWarning=-1;render();
  showTab('mapping');},'Source extraction completed. Review all suggested classifications.'));

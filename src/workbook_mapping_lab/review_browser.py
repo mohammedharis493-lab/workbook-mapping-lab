@@ -29,6 +29,7 @@ from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
 from .manual_benchmark import compare_completed_return
+from .export_preflight import preflight_export
 
 CONFIG_KEYS = frozenset((
     "source", "previous", "profile", "layout", "prior_rules",
@@ -60,6 +61,7 @@ class Workspace:
         self.decisions: dict[str, dict] = {}
         self.latest_saved: dict | None = None
         self.latest_benchmark: dict | None = None
+        self.latest_preflight: dict | None = None
         self.profile = None
         self.lock = threading.RLock()
 
@@ -82,6 +84,7 @@ class Workspace:
             "unresolved": self.review.unresolved() if self.review else [],
             "latest_saved": self.latest_saved,
             "latest_benchmark": self.latest_benchmark,
+            "latest_preflight": self.latest_preflight,
         }
 
     @staticmethod
@@ -106,6 +109,7 @@ class Workspace:
         if changed:
             self.latest_saved = None
             self.latest_benchmark = None
+            self.latest_preflight = None
         return self.data()
 
     def refresh_warnings(self) -> dict:
@@ -254,6 +258,15 @@ class Workspace:
         with WorkbookSnapshot(self.file("source")) as w:
             return {"rows": scan_sheet(w, sheet, start_row=first, end_row=last)}
 
+    def check_template_readiness(self) -> dict:
+        """Read-only validation of native export and configured detail slots."""
+        self.latest_preflight = preflight_export(
+            self.file("template"),
+            self.file("previous_target", False),
+            self.file("detail_routes", False),
+        )
+        return self.data()
+
     def benchmark_completed(self) -> dict:
         """Independent reference check with no workbook writes or approvals."""
         selected = self.file("benchmark_generated", False) or self.file("output")
@@ -309,6 +322,7 @@ def create_server(workspace: Workspace, *, port: int = 0):
         "/api/save-review": lambda _: workspace.save_review(),
         "/api/build": lambda _: workspace.build(),
         "/api/benchmark-completed": lambda _: workspace.benchmark_completed(),
+        "/api/template-readiness": lambda _: workspace.check_template_readiness(),
         "/api/resolve-details": lambda _: workspace.resolve_details(),
         "/api/scan": workspace.scan,
     }

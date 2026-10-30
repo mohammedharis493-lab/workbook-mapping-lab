@@ -58,6 +58,15 @@
    </details>
    <div class="actions"><button id="save-paths">Save paths</button><button id="scan-btn">Find additional FS rows</button><button id="resolve-btn">Resolve Winman detail fields</button></div>
   </div>
+  <details class="quiet-details" id="template-diagnostics">
+   <summary>Check official export completeness <span class="summary-hint">Read-only; optional preflight</span></summary>
+   <div class="advanced-content">
+    <p class="muted">Checks the current-year Excel export selected under Build copy, previous-year used schedules, and approved detail routes. It never modifies a workbook.</p>
+    <button id="template-readiness-run" type="button">Inspect native detail sheets</button>
+    <p id="template-readiness-status" role="status" class="result-line muted">Not checked in this session.</p>
+    <ul id="template-readiness-list"></ul>
+   </div>
+  </details>
   <details class="quiet-details" id="findings-panel"><summary>Extraction findings <span class="summary-hint" id="findings-summary">Shown after extraction</span></summary>
    <div class="table-shell"><table id="findings-table"><thead><tr><th>Finding</th><th>Source</th><th>Explanation</th></tr></thead><tbody><tr><td colspan="3" class="empty">No source scan yet.</td></tr></tbody></table></div>
   </details>
