@@ -18,6 +18,7 @@ from .mapping import load_csv
 from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
+from .template_contract import detail_coverage
 
 
 class ReviewDesk(tk.Tk):
@@ -189,6 +190,12 @@ class ReviewDesk(tk.Tk):
                                ("source_id","field_id","approved"))
             rows,issues=extract_profile(source,profile,
                 previous_workbook_path=self._file("previous",False) or None)
+            if self._file("previous_target",False) and self._file("template",False):
+                contract=detail_coverage(self._file("previous_target"),self._file("template"))
+                for sheet in contract["missing_active_detail_sheets"]:
+                    issues.append({"issue":"VENDOR_TEMPLATE_DETAIL_MISSING",
+                                   "source_id":"",
+                                   "detail":sheet["sheet"]+" — export the active detail schedule from the application"})
             self.profile=profile
             proposals=[]
             if self._file("previous_target",False):
@@ -421,6 +428,7 @@ class ReviewDesk(tk.Tk):
                 source_controls=self._file("source_controls"),
                 output_controls=self._file("output_controls"),
                 output=self._file("output"),
+                previous_export=self._file("previous_target",False) or None,
                 exception_report=str(require_private_directory(self._file("folder"))/
                                      "build_result_private.json"),
                 rounding="whole_rupees")
