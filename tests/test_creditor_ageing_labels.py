@@ -16,7 +16,7 @@ class CreditorLabelTests(AdvisoryTests):
         self.assertIn("0 in its >1-year row (B4)",found["explanation"])
         self.assertIn("70 in Others (B5)",found["explanation"])
         self.assertEqual({e["cell"] for e in found["evidence"]},
-                         {"C5","D5:F5","G5","B4","B5"})
+                         {"C5","D5","E5","F5","G5","B4","B5"})
 
     def test_correct_full_split_requires_both_rows(self):
         self.itr_data["B4"]=40
