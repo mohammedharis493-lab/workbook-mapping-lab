@@ -16,6 +16,11 @@ const sourceKeys = [
  ['advisory_rules','Optional evidence warning checks (.json)'],
  ['folder','Private working folder']
 ];
+const benchmarkKeys = [
+ ['benchmark_generated','Previously generated import-format workbook'],
+ ['completed_reference','Independently completed ITR workbook (.xlsm / .xlsx)'],
+ ['benchmark_contract','Approved field comparison contract (.csv)']
+];
 const buildKeys = [
  ['template','Original current-year Winman template'],
  ['source_controls','Financial statement control totals'],
@@ -60,6 +65,7 @@ fieldInputs($('source-inputs'),sourceKeys.filter(([key])=>['source','previous','
 fieldInputs($('source-advanced-inputs'),sourceKeys.filter(([key])=>!['source','previous','previous_target'].includes(key)));
 fieldInputs($('build-inputs'),buildKeys.filter(([key])=>['template','output'].includes(key)));
 fieldInputs($('build-advanced-inputs'),buildKeys.filter(([key])=>!['template','output'].includes(key)));
+fieldInputs($('benchmark-inputs'),benchmarkKeys);
 function collectPaths() {
  const updates={};
  document.querySelectorAll('input[data-path-key]').forEach(el=>{
@@ -216,8 +222,26 @@ function renderGateStatus(){
  el.textContent=text;
  el.classList.toggle('ready',!open&&!missing&&!other&&state.entries.length>0);
 }
+function renderBenchmark(){
+ const record=state.latest_benchmark;
+ const body=$('benchmark-table').tBodies[0];body.replaceChildren();
+ if(!record){$('benchmark-summary').textContent='No comparison run.';
+  emptyRow($('benchmark-table'),'Run comparison to see results.',5);return;}
+ $('benchmark-summary').textContent=record.fully_matched+' of '+record.contract_fields+' reviewed fields matched; '+
+   record.unavailable_targets+' required native targets unavailable. Private report: '+record.private_report;
+ record.details.forEach(item=>{
+  const tr=body.insertRow();
+  cell(tr,item.field_id);
+  cell(tr,item.fs_expected,'number');
+  cell(tr,item.generated?.amount||item.generated?.state||'Unavailable','number');
+  cell(tr,item.manual?.amount||item.manual?.state||'Unavailable','number');
+  const td=cell(tr,'');
+  td.append(node('span',item.status==='MATCH'?'Match':item.checks.join(', '),
+    'pill '+(item.status==='MATCH'?'approved':'needs_review')));
+ });
+}
 function render(){
- renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();
+ renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();
 }
 async function run(task,msg) {
  try{
@@ -268,6 +292,10 @@ $('review-export').addEventListener('click',()=>run(async()=>{
 $('resolve-btn').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/resolve-details');
  render();},'Official detailed fields resolved; review the new layout.'));
+$('benchmark-run').addEventListener('click',()=>run(async()=>{
+ await syncPaths();state=await api('/api/benchmark-completed');render();
+ $('benchmark-section').open=true;
+ },'Completed-return comparison saved privately. Examine the individual field results.'));
 $('build-copy').addEventListener('click',()=>run(async()=>{
  await syncPaths();
  if(!window.confirm('Build a separate, new local Excel file? The original template will not be overwritten.'))return;
