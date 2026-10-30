@@ -9,7 +9,7 @@ import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-SUFFIXES = {".py", ".md", ".txt", ".toml", ".yml", ".yaml", ".gitignore", ".gitattributes", ".csv"}
+SUFFIXES = {".py", ".md", ".txt", ".toml", ".yml", ".yaml", ".gitignore", ".gitattributes", ".csv", ".html", ".css", ".js"}
 ALLOW_CSV = ROOT / "fixtures" / "synthetic"
 BLOCK_EXT = {".xlsx", ".xls", ".xlsm", ".xlsb", ".pdf", ".docx", ".doc", ".json", ".xml",
              ".zip", ".7z", ".rar", ".png", ".jpg", ".jpeg", ".db", ".sqlite", ".pem",
