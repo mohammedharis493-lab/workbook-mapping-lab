@@ -36,7 +36,7 @@ def normal(label: str) -> str:
 
 
 def find_field(book: WorkbookSnapshot, sheet: str, caption: str, value_column: str,
-               *, label_column: str = "A") -> dict:
+               *, label_column: str = "A", anchor_cell: str = "") -> dict:
     """Match one specific label and one numeric slot; never guess a row."""
     if sheet not in book.sheets:
         return {"state": "MISSING_SHEET", "sheet": sheet}
@@ -44,13 +44,22 @@ def find_field(book: WorkbookSnapshot, sheet: str, caption: str, value_column: s
         return {"state": "HIDDEN_SHEET", "sheet": sheet}
     target = normal(caption)
     matches = []
-    for position, item in book.sheets[sheet]["cells"].items():
-        if not position.startswith(label_column):
-            continue
-        row = position[len(label_column):]
-        if not row.isdigit() or normal(item["value"]) != target:
-            continue
-        matches.append(row)
+    if anchor_cell:
+        anchor = anchor_cell.strip().upper()
+        from .simulator import CELL_REF
+        if not CELL_REF.fullmatch(anchor):
+            raise ValueError("Invalid approved label anchor")
+        if normal(book.cell(sheet, anchor)["value"]) != target:
+            return {"state":"APPROVED_ANCHOR_CHANGED","sheet":sheet,"cell":anchor}
+        matches = [CELL_REF.fullmatch(anchor).group(2)]
+    else:
+        for position, item in book.sheets[sheet]["cells"].items():
+            if not position.startswith(label_column):
+                continue
+            row = position[len(label_column):]
+            if not row.isdigit() or normal(item["value"]) != target:
+                continue
+            matches.append(row)
     if len(matches) != 1:
         return {"state": "LABEL_MISSING" if not matches else "LABEL_AMBIGUOUS",
                 "sheet": sheet, "matches": len(matches)}
@@ -101,8 +110,10 @@ def compare_completed_return(
             expected = amount(rule["expected_amount"])
             if expected is None:
                 raise ValueError("Missing independently verified FS value for " + field)
-            gen_info = find_field(gen, rule["generated_sheet"], rule["generated_label"], g_col)
-            man_info = find_field(manual, rule["manual_sheet"], rule["manual_label"], m_col)
+            gen_info = find_field(gen, rule["generated_sheet"], rule["generated_label"], g_col,
+                                  anchor_cell=rule.get("generated_label_cell",""))
+            man_info = find_field(manual, rule["manual_sheet"], rule["manual_label"], m_col,
+                                  anchor_cell=rule.get("manual_label_cell",""))
             statuses = []
             if gen_info["state"] != "FOUND":
                 statuses.append("GENERATED_FIELD_" + gen_info["state"])
