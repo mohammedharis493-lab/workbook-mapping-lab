@@ -173,5 +173,22 @@ class AdvisoryTests(unittest.TestCase):
 
 
 
+    def test_unreviewed_warning_does_not_block_mapping(self):
+        from workbook_mapping_lab.review import ReviewSession
+        warning=check_advisories(str(self.fs),str(self.itr))
+        self.assertTrue(any(a["severity"]=="Review" for a in warning))
+        self.assertTrue(all(not a["acknowledged"] for a in warning))
+        sources=[{"source_id":"X","section":"BS-L",
+                  "caption":"Borrowings","amount":"70","unit":"rupees","risk":""}]
+        fields=[{"field_id":"LOAN","section":"BS-L","caption":"Borrowings"}]
+        session=ReviewSession(sources,[],fields)
+        session.approve("X","LOAN")
+        output,errors,_=session.compiled()
+        self.assertFalse(errors)
+        self.assertEqual(output[0]["amount"],"70")
+        self.assertEqual(session.unresolved(),[])
+        self.assertTrue(all(not item["blocking"] for item in warning))
+
+
 if __name__=="__main__":
     unittest.main()
