@@ -192,6 +192,126 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
     return notes
 
 
+
+def evaluate_evidence_rules(
+    workbooks: dict[str, str],
+    rules: list[dict],
+) -> list[dict]:
+    """Optional reusable, reviewer-configured cross-file warning checks.
+
+    An evidence rule compares a sum of numeric source cells with the amount in
+    one target cell, within an approved tolerance. No inference of accounting
+    policy: the rule title and descriptions are supplied by a human reviewer.
+
+    Example:
+      {"code":"CHECK_01","title":"Classification consistency",
+       "source_kind":"previous_fs","source_sheet":"Note",
+       "source_cells":["D5","E5","F5"],
+       "target_kind":"previous_return","target_sheet":"Creditors",
+       "target_cell":"B5","tolerance":"0",
+       "suggested_action":"Inspect invoice ageing"}
+    """
+    import re
+    if len(rules)>500:
+        raise ValueError("Too many evidence rules")
+    results=[]
+    seen=set()
+    cell_pat=re.compile(r"^[A-Z]{1,3}[1-9][0-9]{0,5}$")
+    allowed={"previous_fs","previous_return","current_fs","current_return"}
+    opened={}
+    try:
+        for rule in rules:
+            ident=str(rule.get("code","")).strip()
+            if not ident or ident in seen or len(ident)>100:
+                raise ValueError("Each evidence rule needs a unique nonempty code")
+            seen.add(ident)
+            left=str(rule.get("source_kind",""))
+            right=str(rule.get("target_kind",""))
+            if left not in allowed or right not in allowed:
+                raise ValueError("Rule must reference approved workbook roles")
+            cells=rule.get("source_cells",[])
+            dest=str(rule.get("target_cell","")).upper()
+            if (not isinstance(cells,list) or not cells or len(cells)>100 or
+                not all(cell_pat.fullmatch(str(cell).upper()) for cell in cells) or
+                not cell_pat.fullmatch(dest)):
+                raise ValueError("Invalid cell references in evidence rule")
+            try:
+                tolerance=Decimal(str(rule.get("tolerance","0")))
+            except InvalidOperation:
+                raise ValueError("Invalid evidence tolerance") from None
+            if not tolerance.is_finite() or tolerance<0:
+                raise ValueError("Evidence tolerance must be finite and nonnegative")
+            source_sheet=str(rule.get("source_sheet",""))
+            target_sheet=str(rule.get("target_sheet",""))
+            if not source_sheet or not target_sheet:
+                raise ValueError("Evidence rules require both worksheet names")
+            if not workbooks.get(left) or not workbooks.get(right):
+                results.append(advisory(
+                    ident+"_UNVERIFIED",
+                    str(rule.get("title") or ident)+" (evidence unavailable)",
+                    "One of the required workbooks was not provided.",
+                    "Provide both source workbooks to perform this optional classification check.",
+                    severity="Info",
+                    year=str(rule.get("period") or "Unspecified"),
+                ))
+                continue
+            try:
+                for kind in (left,right):
+                    if kind not in opened:
+                        opened[kind]=WorkbookSnapshot(workbooks[kind])
+                src=opened[left]
+                target=opened[right]
+                if source_sheet not in src.sheets or target_sheet not in target.sheets:
+                    raise ValueError("Required evidence worksheet not found")
+                left_amounts=[value(src.cell(source_sheet,str(cell).upper())["value"])
+                              for cell in cells]
+                amount_right=value(target.cell(target_sheet,dest)["value"])
+                if any(x is None for x in left_amounts) or amount_right is None:
+                    raise ValueError("Evidence includes blank or nonnumeric cells")
+                expected=sum(left_amounts,Decimal("0"))
+                difference=amount_right-expected
+            except (OSError,ValueError,KeyError) as error:
+                results.append(advisory(
+                    ident+"_UNVERIFIED",str(rule.get("title") or ident)+" (not verified)",
+                    "The evidence comparison could not be completed: "+str(error),
+                    "Review the selected source sheets and amounts.",
+                    severity="Info",year=str(rule.get("period") or "Unspecified"),
+                ))
+                continue
+            if abs(difference)>tolerance:
+                ev=[{"source":left,"sheet":source_sheet,
+                     "cell":",".join(str(x).upper() for x in cells),
+                     "description":"Reviewed expected amount","amount":money(expected)},
+                    {"source":right,"sheet":target_sheet,"cell":dest,
+                     "description":"Recorded amount","amount":money(amount_right)}]
+                results.append(advisory(
+                    ident,str(rule.get("title") or ident),
+                    str(rule.get("explanation") or "A cross-workbook classification amount differs from its supporting evidence.")+
+                    " Supporting figure: "+money(expected)+
+                    ". Recorded figure: "+money(amount_right)+".",
+                    str(rule.get("suggested_action") or "Inspect both source schedules before accepting this classification."),
+                    severity=str(rule.get("severity") or "Review"),
+                    evidence=ev,difference=money(difference),
+                    year=str(rule.get("period") or "Unspecified"),
+                ))
+    finally:
+        for book in opened.values():
+            book.close()
+    return results
+
+
+def load_evidence_rules(path: str) -> list[dict]:
+    """Read locally stored configuration; never load or execute embedded code."""
+    import json
+    parsed=json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    if not isinstance(parsed,dict) or parsed.get("version")!=1:
+        raise ValueError("Unsupported warning evidence profile")
+    checks=parsed.get("checks")
+    if not isinstance(checks,list):
+        raise ValueError("Evidence profile must contain a checks list")
+    return checks
+
+
 def check_advisories(prior_fs: str | None, prior_itr: str | None,
                      current_fs: str | None = None) -> list[dict]:
     """Return independent, non-blocking notes; no mapping state is mutated."""
