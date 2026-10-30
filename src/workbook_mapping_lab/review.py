@@ -48,7 +48,10 @@ class ReviewSession:
             # *suggested* but not approved for the new period.
             if entry.get("risk"):
                 entry["review_status"]="NEEDS_REVIEW"
-                entry["target_hint"]=",".join(x.get("field_id","") for x in index.get(sid,[]))
+                hints=[x.get("field_id","") for x in index.get(sid,[])]
+                if proposed.get(sid,{}).get("suggested_field_id"):
+                    hints.append(proposed[sid]["suggested_field_id"])
+                entry["target_hint"]=",".join(dict.fromkeys(hints))
                 continue
             previous = index.get(sid,[])
             if len(previous)==1 and previous[0].get("field_id") in self.layout:
