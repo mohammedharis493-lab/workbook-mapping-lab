@@ -28,7 +28,8 @@ class ReviewSession:
     """Approval is explicit. Previously approved rules may be safely reused."""
 
     def __init__(self, rows: list[dict], issues: list[dict],
-                 fields: list[dict], existing_rules: list[dict] | None = None):
+                 fields: list[dict], existing_rules: list[dict] | None = None,
+                 suggestions: list[dict] | None = None):
         self.entries = {row["source_id"]: dict(row) for row in rows}
         if len(self.entries) != len(rows):
             raise ValueError("Duplicate extracted source IDs")
@@ -37,6 +38,7 @@ class ReviewSession:
             raise ValueError("Duplicate target field IDs")
         self.issues = [dict(i) for i in issues]
         self.rules: dict[str,list[dict]] = {}
+        proposed = {x["source_id"]:x for x in (suggestions or [])}
         index = {}
         for rule in existing_rules or []:
             if rule.get("approved", "").strip().lower() in ("yes", "true", "1"):
@@ -62,8 +64,14 @@ class ReviewSession:
                     entry["review_status"]="REUSED"
                     entry["target_hint"]=rule["field_id"]
                     continue
-            entry["review_status"]="NEEDS_REVIEW"
-            entry["target_hint"]=",".join(x.get("field_id","") for x in previous)
+            guess=proposed.get(sid,{})
+            hint=guess.get("suggested_field_id","")
+            if hint and hint in self.layout and self.layout[hint].get("section")==entry["section"]:
+                entry["review_status"]="SUGGESTED"
+                entry["target_hint"]=hint
+            else:
+                entry["review_status"]="NEEDS_REVIEW"
+                entry["target_hint"]=",".join(x.get("field_id","") for x in previous)
 
     def approve(self, source_id: str, field_id: str,
                 *, portion: str="1", sign: str="keep",
