@@ -31,6 +31,8 @@ from .template_contract import detail_coverage
 from .manual_benchmark import compare_completed_return
 from .export_preflight import preflight_export
 from .entity_schema import load_entity_profile, inspect_entity_profile
+from .schema_discovery import (discover_entity_fields, set_candidate_decision,
+                               reviewed_profile, save_private_profile)
 
 CONFIG_KEYS = frozenset((
     "source", "previous", "profile", "layout", "prior_rules",
@@ -65,6 +67,7 @@ class Workspace:
         self.latest_benchmark: dict | None = None
         self.latest_preflight: dict | None = None
         self.latest_entity_schema: dict | None = None
+        self.entity_discovery: dict | None = None
         self.profile = None
         self.lock = threading.RLock()
 
@@ -89,6 +92,7 @@ class Workspace:
             "latest_benchmark": self.latest_benchmark,
             "latest_preflight": self.latest_preflight,
             "latest_entity_schema": self.latest_entity_schema,
+            "entity_discovery": self.entity_discovery,
         }
 
     @staticmethod
@@ -110,6 +114,8 @@ class Workspace:
             self.review = None
             self.profile = None
             self.issues = []
+        if changed.intersection({"template", "layout", "entity_key", "assessment_year", "itr_form"}):
+            self.entity_discovery = None
         if changed:
             self.latest_saved = None
             self.latest_benchmark = None
@@ -291,6 +297,49 @@ class Workspace:
         }
         return self.data()
 
+    def discover_entity_candidates(self) -> dict:
+        """Read-only native workbook scan; no applicability guessed."""
+        self.entity_discovery = discover_entity_fields(
+            self.file("template"), self.file("layout", False),
+        )
+        self.latest_entity_schema = None
+        return self.data()
+
+    def review_entity_candidate(self, request: dict) -> dict:
+        if not self.entity_discovery:
+            raise ValueError("Scan the current-year export first")
+        set_candidate_decision(
+            self.entity_discovery,
+            candidate_id=str(request.get("candidate_id", "")),
+            selected=request.get("selected"),
+            field_id=str(request.get("field_id", "")),
+            section=str(request.get("section", "")),
+            applicability=str(request.get("applicability", "review")),
+        )
+        return self.data()
+
+    def export_entity_candidate_profile(self) -> dict:
+        if not self.entity_discovery:
+            raise ValueError("Scan the current-year export first")
+        profile = reviewed_profile(
+            self.entity_discovery,
+            entity_key=self.file("entity_key"),
+            assessment_year=self.file("assessment_year"),
+            itr_form=self.file("itr_form"),
+            native_template=self.file("template"),
+            layout_path=self.file("layout", False),
+        )
+        destination = self._new_file("entity_schema_reviewed_PRIVATE_", ".json")
+        saved = save_private_profile(profile, str(destination))
+        self.config["entity_schema_profile"] = saved
+        self.latest_entity_schema = inspect_entity_profile(
+            self.file("template"), profile,
+            expected_entity_key=self.file("entity_key"),
+            expected_assessment_year=self.file("assessment_year"),
+            expected_itr_form=self.file("itr_form"),
+        )
+        return {"path": saved, **self.data()}
+
     def check_entity_schema(self) -> dict:
         """Fail closed: validate identity, exact workbook, and approved layout."""
         profile = load_entity_profile(self.file("entity_schema_profile"))
@@ -368,6 +417,9 @@ def create_server(workspace: Workspace, *, port: int = 0):
         "/api/benchmark-completed": lambda _: workspace.benchmark_completed(),
         "/api/template-readiness": lambda _: workspace.check_template_readiness(),
         "/api/entity-schema-check": lambda _: workspace.check_entity_schema(),
+        "/api/entity-discover": lambda _: workspace.discover_entity_candidates(),
+        "/api/entity-review-candidate": workspace.review_entity_candidate,
+        "/api/entity-export-profile": lambda _: workspace.export_entity_candidate_profile(),
         "/api/resolve-details": lambda _: workspace.resolve_details(),
         "/api/scan": workspace.scan,
     }

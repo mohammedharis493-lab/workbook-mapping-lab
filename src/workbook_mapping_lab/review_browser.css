@@ -116,3 +116,19 @@ dialog::backdrop{background:#13241d77}kbd{padding:.13rem .34rem;border-radius:4p
 @media(max-width:680px){main{padding:1.2rem .85rem 3rem}.header{padding:.8rem .95rem}.local-status{display:none}.page-intro{gap:1rem;align-items:flex-start;flex-direction:column}.progress-summary{border-left:0;border-top:1px solid var(--line);padding:.6rem 0 0;width:100%}.form-grid{grid-template-columns:1fr}.work-surface{padding:1.1rem}.section-head{align-items:stretch}.tabs{margin-bottom:1.3rem}.tab{padding:.7rem .8rem}.summary-hint{display:none}footer{padding:1rem}.warning-detail{padding:1.15rem}.mapping-shell{max-height:29rem}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 @media(prefers-contrast:more){:root{--line:#708476;--line-strong:#516c59;--muted:#43584b}button{border-color:#4f6858}th{color:#364a3d}}
+
+/* Progressive disclosure for entity-native candidate review; no gesture interception. */
+.discovery-search{display:flex;flex-direction:column;gap:.35rem;margin:1rem 0 .75rem;color:var(--muted);font-size:.84rem;font-weight:650}
+.discovery-table-shell{max-height:24rem;scrollbar-gutter:stable}
+.discovery-table-shell table{min-width:29rem}
+.discovery-table-shell thead th{position:sticky;top:0;z-index:2}
+.discovery-table-shell td{vertical-align:middle}
+.discovery-table-shell td:first-child{max-width:37rem}
+.discovery-table-shell td:last-child{text-align:right;white-space:nowrap}
+.discovery-table-shell button{min-width:6.6rem}
+.reviewed-candidate{background:#e7f3e9;color:#276244;border-color:#b7d4bf}
+.candidate-editor{margin:1.1rem 0;padding:1.2rem;border-radius:10px;border:1px solid var(--line);background:#fafcf9}
+.candidate-editor .tick{align-items:center;flex-direction:row;gap:.5rem}
+.candidate-editor .tick input{width:1.15rem;height:1.15rem;flex:0 0 auto}
+.candidate-editor .muted{font-size:.82rem;margin-top:.9rem;line-height:1.6}
+@media(max-width:800px){.candidate-editor .form-grid{grid-template-columns:1fr}.discovery-table-shell{max-height:20rem}}

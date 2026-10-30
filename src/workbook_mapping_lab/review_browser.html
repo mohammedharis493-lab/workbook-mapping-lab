@@ -113,6 +113,32 @@
     <div class="advanced-content">
      <div id="entity-schema-inputs" class="form-grid"></div>
      <div class="actions"><button id="entity-schema-run" type="button">Verify this entity and year</button></div>
+     <details class="advanced" id="entity-discovery-section">
+      <summary>Discover fields in this entity's export <span class="summary-hint">Review before saving ? never automatic applicability</span></summary>
+      <div class="advanced-content">
+       <p class="muted">Scan existing native blank fields, then individually review the relevant sections and their applicability. This does not change the Winman export or approved mappings.</p>
+       <div class="actions"><button id="entity-discover" type="button">Discover possible fields</button></div>
+       <p id="entity-discovery-count" class="muted" aria-live="polite">No discovery scan yet.</p>
+       <label class="discovery-search">Find a caption or sheet<input id="entity-discovery-search" type="search" placeholder="Search candidate fields"></label>
+       <div class="table-shell discovery-table-shell">
+        <table id="entity-discovery-table"><thead><tr><th>Candidate label</th><th>Destination</th><th>Review</th></tr></thead><tbody><tr><td colspan="3" class="empty">Run discovery to inspect fields.</td></tr></tbody></table>
+       </div>
+       <div class="actions"><button id="entity-discovery-more" type="button" hidden>Show more candidates</button></div>
+       <div id="entity-candidate-editor" class="candidate-editor" hidden>
+        <p class="eyebrow">ACCOUNTANT DECISION</p>
+        <h3 id="entity-candidate-selected">Choose a candidate</h3>
+        <div class="form-grid">
+         <label>Field ID<input id="entity-candidate-field-id" type="text" autocomplete="off"></label>
+         <label>Financial-statement section<input id="entity-candidate-section" type="text" placeholder="e.g. BS-L" autocomplete="off"></label>
+         <label>Applicability<select id="entity-candidate-applicability"><option value="review">Needs review</option><option value="required">Required for this entity</option><option value="optional">Optional for this entity</option><option value="not_applicable">Not applicable (supported by evidence)</option></select></label>
+         <label class="tick"><input id="entity-candidate-include" type="checkbox"> Include this reviewed field in the private profile</label>
+        </div>
+        <p class="muted">A field identified in a previously approved layout still needs a fresh applicability decision. Do not mark a field as not applicable merely because a worksheet is absent.</p>
+        <div class="actions"><button id="entity-candidate-apply" type="button">Record reviewed decision</button></div>
+       </div>
+       <div class="actions"><button id="entity-discovery-export" type="button">Save reviewed profile privately</button></div>
+      </div>
+     </details>
      <p id="entity-schema-status" class="result-line muted">Not validated. Build copy will reject missing or mismatched entity profiles.</p>
     </div>
    </details>

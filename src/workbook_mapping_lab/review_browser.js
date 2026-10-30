@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name=local-token]').content;
 let state = {config:{}, entries:[], fields:[], warnings:[], issues:[], unresolved:[], latest_saved:null};
 let selectedSource = '', selectedWarning = -1, visibleTab = 'sources';
+let selectedEntityCandidate = '', discoveryVisible = 60;
 const sourceKeys = [
  ['source','Current-year financial statements'],
  ['previous','Previous-year financial statements'],
@@ -229,6 +230,62 @@ function renderGateStatus(){
  el.textContent=text;
  el.classList.toggle('ready',!open&&!missing&&!other&&state.entries.length>0);
 }
+function selectEntityCandidate(candidateId) {
+ selectedEntityCandidate=candidateId;
+ const discovery=state.entity_discovery;
+ const candidate=discovery?.candidates?.find(x=>x.candidate_id===candidateId);
+ const editor=$('entity-candidate-editor');
+ editor.hidden=!candidate;
+ if(!candidate)return;
+ $('entity-candidate-selected').textContent=candidate.caption+
+   ' ? '+candidate.sheet+'!'+candidate.amount_cell;
+ $('entity-candidate-field-id').value=candidate.field_id;
+ $('entity-candidate-section').value=candidate.section;
+ $('entity-candidate-applicability').value=candidate.applicability;
+ $('entity-candidate-include').checked=candidate.selected;
+ renderEntityDiscovery();
+}
+function renderEntityDiscovery(){
+ const discovery=state.entity_discovery;
+ const body=$('entity-discovery-table').tBodies[0];
+ body.replaceChildren();
+ if(!discovery){
+  $('entity-discovery-count').textContent='No native field scan in this session.';
+  $('entity-discovery-more').hidden=true;
+  $('entity-candidate-editor').hidden=true;
+  emptyRow($('entity-discovery-table'),'Discover fields to view candidates.',3);
+  return;
+ }
+ const candidates=discovery.candidates||[];
+ const chosen=candidates.filter(x=>x.selected);
+ const reviewed=chosen.filter(x=>x.reviewed);
+ $('entity-discovery-count').textContent=
+  discovery.candidate_count+' candidate destinations found; '+
+  chosen.length+' selected; '+reviewed.length+' reviewed. '+
+  discovery.matched_existing_layout+' existing mappings recognised. '+
+  (discovery.truncated?'Scan exceeded the safe review limit; profile export is disabled.':'');
+ const query=$('entity-discovery-search').value.toLowerCase().trim();
+ const matching=candidates.filter(c=>!query||[
+  c.caption,c.sheet,c.field_id,c.section,c.amount_cell
+ ].some(x=>String(x||'').toLowerCase().includes(query)));
+ const displayed=matching.slice(0,discoveryVisible);
+ if(!displayed.length)emptyRow($('entity-discovery-table'),'No matching candidates.',3);
+ for(const item of displayed){
+  const row=body.insertRow();row.tabIndex=0;
+  if(item.candidate_id===selectedEntityCandidate)row.classList.add('selected');
+  const label=cell(row,item.caption,'item');
+  label.append(node('small',item.sheet+' ? '+item.anchor_cell));
+  cell(row,item.amount_cell);
+  const action=cell(row,'');
+  const button=node('button',item.reviewed?'Reviewed':item.selected?'Needs decision':'Review');
+  button.type='button';button.className=item.reviewed?'reviewed-candidate':'';
+  button.addEventListener('click',()=>selectEntityCandidate(item.candidate_id));
+  action.append(button);
+  row.addEventListener('keydown',e=>{if(e.key==='Enter' && e.target===row)selectEntityCandidate(item.candidate_id);});
+ }
+ $('entity-discovery-more').hidden=displayed.length>=matching.length;
+ $('entity-discovery-more').textContent='Show next '+Math.min(60,matching.length-displayed.length)+' candidates';
+}
 function renderEntitySchema(){
  const x=state.latest_entity_schema;
  $('entity-schema-status').textContent=x?
@@ -283,7 +340,7 @@ function renderTemplatePreflight(){
  });
 }
 function render(){
- renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();renderEntitySchema();
+ renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();renderEntitySchema();renderEntityDiscovery();
 }
 async function run(task,msg) {
  try{
@@ -340,6 +397,36 @@ $('review-export').addEventListener('click',()=>run(async()=>{
 $('resolve-btn').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/resolve-details');
  render();},'Official detailed fields resolved; review the new layout.'));
+$('entity-discover').addEventListener('click',()=>run(async()=>{
+ await syncPaths();
+ state=await api('/api/entity-discover');
+ selectedEntityCandidate='';discoveryVisible=60;render();
+ $('entity-discovery-section').open=true;
+ },'Read-only native export scan finished. Review applicable fields before saving.'));
+$('entity-discovery-search').addEventListener('input',()=>{
+ discoveryVisible=60;renderEntityDiscovery();
+});
+$('entity-discovery-more').addEventListener('click',()=>{
+ discoveryVisible+=60;renderEntityDiscovery();
+});
+$('entity-candidate-apply').addEventListener('click',()=>run(async()=>{
+ if(!selectedEntityCandidate)throw new Error('Select a candidate first');
+ state=await api('/api/entity-review-candidate',{
+  candidate_id:selectedEntityCandidate,
+  selected:$('entity-candidate-include').checked,
+  field_id:$('entity-candidate-field-id').value.trim(),
+  section:$('entity-candidate-section').value.trim(),
+  applicability:$('entity-candidate-applicability').value
+ });
+ render();
+ $('entity-discovery-section').open=true;
+ },'Entity field review recorded in this local session.'));
+$('entity-discovery-export').addEventListener('click',()=>run(async()=>{
+ await syncPaths();
+ const result=await api('/api/entity-export-profile');
+ state=result;render();$('entity-discovery-section').open=true;
+ notice('Reviewed private entity profile saved: '+result.path);
+ }));
 $('entity-schema-run').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/entity-schema-check');render();
  $('entity-schema-section').open=true;
