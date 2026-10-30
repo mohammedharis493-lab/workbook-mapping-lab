@@ -106,6 +106,41 @@ def resolve_layout(template_path: str, routes: list[dict]) -> dict:
         }
 
 
+
+def merge_approved_routes(existing_layout: list[dict], newly_resolved: dict) -> dict:
+    """Replace only matching approved field IDs; do not discard unrelated fields.
+
+    Used when the user has a complete vendor template with conditional detail
+    worksheets newly available. The original mappings remain untouched.
+    """
+    if newly_resolved.get("status") != "READY":
+        raise ValueError("Cannot merge an incomplete vendor field resolution")
+    index={}
+    for row in existing_layout:
+        fid=row["field_id"]
+        if fid in index or not fid:
+            raise ValueError("Duplicate/blank existing field ID")
+        index[fid]=dict(row)
+    for item in newly_resolved["layout"]:
+        fid=item["field_id"]
+        if fid in index and index[fid]["section"] != item["section"]:
+            raise ValueError("Statement section changed for "+fid)
+        index[fid]=dict(item)
+    address_check=set()
+    for item in index.values():
+        key=item["sheet"],item["cell"].upper()
+        if key in address_check:
+            raise ValueError("Duplicate output address after merging mapped detail fields")
+        address_check.add(key)
+    return {
+        "status":"READY",
+        "count":len(index),
+        "replaced_or_added":len(newly_resolved["layout"]),
+        "template_sha256":newly_resolved["template_sha256"],
+        "layout":list(index.values()),
+        "exceptions":[],
+    }
+
 def write_private_layout(report: dict, destination: str) -> None:
     if report["status"]!="READY":
         raise ValueError("Cannot export a partially resolved target layout")
