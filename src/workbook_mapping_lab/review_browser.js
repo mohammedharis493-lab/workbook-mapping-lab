@@ -56,8 +56,10 @@ function fieldInputs(holder, pairs) {
   wrap.append(input);holder.append(wrap);
  });
 }
-fieldInputs($('source-inputs'),sourceKeys);
-fieldInputs($('build-inputs'),buildKeys);
+fieldInputs($('source-inputs'),sourceKeys.filter(([key])=>['source','previous','previous_target'].includes(key)));
+fieldInputs($('source-advanced-inputs'),sourceKeys.filter(([key])=>!['source','previous','previous_target'].includes(key)));
+fieldInputs($('build-inputs'),buildKeys.filter(([key])=>['template','output'].includes(key)));
+fieldInputs($('build-advanced-inputs'),buildKeys.filter(([key])=>!['template','output'].includes(key)));
 function collectPaths() {
  const updates={};
  document.querySelectorAll('input[data-path-key]').forEach(el=>{
@@ -81,6 +83,11 @@ function showTab(id) {
  });
 }
 document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>showTab(el.dataset.view)));
+$('footer-help').addEventListener('click',()=>$('help-dialog').showModal());
+document.addEventListener('pointerdown',event=>{
+ const menu=$('view-menu');
+ if(menu.open && !menu.contains(event.target))menu.open=false;
+});
 
 function cell(row, value, cls='') {const td=node('td',value,cls);row.append(td);return td;}
 function emptyRow(table,message,cols) {
@@ -88,6 +95,8 @@ function emptyRow(table,message,cols) {
 }
 function renderFindings() {
  const tb=$('findings-table').tBodies[0];tb.replaceChildren();
+ $('findings-summary').textContent=state.issues.length?(state.issues.length+' findings'):'No findings';
+ if(state.issues.length && $('findings-panel') && visibleTab==='sources')$('findings-panel').open=true;
  if(!state.issues.length) {emptyRow($('findings-table'),'No extraction findings.',3);return;}
  state.issues.forEach(w=>{
   const tr=tb.insertRow();
@@ -115,27 +124,29 @@ function renderMapping() {
  const visible=entries.filter(e=>!q||[
    e.caption,e.source_id,e.section,e.target_hint,e.risk
  ].some(x=>String(x||'').toLowerCase().includes(q)));
- if(!visible.length){emptyRow($('mapping-table'),entries.length?'No matching rows.':'Extract sources first.',7);}
+ if(!visible.length){emptyRow($('mapping-table'),entries.length?'No matching rows.':'Extract sources first.',5);}
  visible.forEach(entry=>{
   const tr=tbody.insertRow();
   tr.dataset.id=entry.source_id;tr.tabIndex=0;
   if(entry.source_id===selectedSource)tr.classList.add('selected');
-  const status=cell(tr,'');
-  status.append(node('span',entry.review_status||'Needs review',
-    'pill '+String(entry.review_status||'needs_review').toLowerCase()));
-  cell(tr,entry.section);
-  cell(tr,entry.caption||entry.source_id);
+  const itemCell=cell(tr,entry.caption||entry.source_id,'item');
+  itemCell.append(node('small',entry.section+' · '+entry.source_id));
   cell(tr,entry.amount||'0','number');
   cell(tr,entry.previous_amount||'—','number');
   cell(tr,entry.target_hint||'—');
-  cell(tr,entry.risk||entry.notice||'—');
+  const status=cell(tr,'');
+  status.append(node('span',entry.review_status||'Needs review',
+    'pill '+String(entry.review_status||'needs_review').toLowerCase()));
   tr.addEventListener('click',()=>selectSource(entry.source_id));
   tr.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectSource(entry.source_id);}});
  });
  const exists=entries.some(e=>e.source_id===selectedSource);
  if(!exists)selectedSource='';
  if(selectedSource)fillDecision();
- else $('selected-source').textContent='None';
+ else {
+  $('selected-source').textContent='Choose a row to review';
+  $('selected-risk').textContent='The item\'s supporting details and any exceptions will appear here.';
+ }
 }
 function selectSource(id) {
  selectedSource=id;fillDecision();
@@ -143,7 +154,9 @@ function selectSource(id) {
 }
 function fillDecision() {
  const item=state.entries.find(e=>e.source_id===selectedSource);if(!item)return;
- $('selected-source').textContent=(item.caption||item.source_id)+' · '+item.source_id;
+ $('selected-source').textContent=item.caption||item.source_id;
+ $('selected-risk').textContent=(item.section+' · '+item.source_id+'\n')+
+   (item.risk||item.notice||'No additional source risk recorded.');
  const select=$('destination');
  const old=select.value;select.replaceChildren();
  select.append(node('option','Select destination'));
@@ -196,10 +209,11 @@ function render(){
 async function run(task,msg) {
  try{
   document.body.classList.add('working');
+  $('main').setAttribute('aria-busy','true');
   await task();
   if(msg)notice(msg);
  }catch(error){notice(error.message||String(error),true);}
- finally{document.body.classList.remove('working');}
+ finally{document.body.classList.remove('working');$('main').removeAttribute('aria-busy');}
 }
 $('mapping-search').addEventListener('input',renderMapping);
 $('save-paths').addEventListener('click',()=>run(async()=>{
