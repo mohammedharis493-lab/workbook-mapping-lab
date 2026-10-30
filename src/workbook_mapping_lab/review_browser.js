@@ -207,7 +207,14 @@ function renderWarnings(){
 function selectWarning(index){selectedWarning=index;renderWarnings();}
 function showWarningDetail(w) {
  $('warning-title').textContent=w.title;
- $('warning-explanation').textContent=w.explanation;
+ const provenance=[];
+ if(w.source_period || w.target_period) {
+  provenance.push('Source period: '+(w.source_period||'Not specified'));
+  provenance.push('Target period: '+(w.target_period||'Not specified'));
+ }
+ if(w.tolerance!==undefined && w.tolerance!==null)
+  provenance.push('Allowed difference: '+w.tolerance);
+ $('warning-explanation').textContent=(provenance.length?provenance.join(' · ')+'\n':'')+w.explanation;
  $('warning-note').value=w.reviewer_note||'';
  const evidence=$('warning-evidence');evidence.replaceChildren();
  w.evidence.forEach(e=>{
