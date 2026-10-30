@@ -16,6 +16,7 @@ from .allocations import number, plan_allocations, ready_to_release
 from .mapping import load_csv
 from .writer import populate
 from .template_contract import detail_coverage
+from .detail_companions import add_companion_fields
 
 
 def _csv(path: str, columns: tuple[str, ...], rows: list[dict]) -> None:
@@ -74,6 +75,13 @@ def controlled_build(
             })
         safe_out.append({**item, "amount": format(final, "f")})
         output_sections[item["section"]] += final
+
+    if companion_details:
+        detail_rows=load_csv(companion_details,
+                             ("parent_field_id","detail_field_id","amount"))
+        safe_out, detail_issues=add_companion_fields(
+            safe_out,fields,detail_rows,rounding)
+        issues.extend(detail_issues)
 
     control_seen = set()
     for control in required_output_totals:
