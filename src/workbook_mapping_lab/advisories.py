@@ -40,8 +40,9 @@ def warning_review_key(item: dict, evidence_signature: str = "") -> str:
     Review notes and the acknowledged flag are deliberately excluded so
     changing a decision cannot alter the identity of the underlying warning.
     """
-    fields = ("code", "severity", "period", "title", "explanation",
-              "suggested_action", "difference", "evidence")
+    fields = ("code", "severity", "period", "source_period", "target_period",
+              "tolerance", "title", "explanation", "suggested_action",
+              "difference", "evidence")
     payload = {key: item.get(key) for key in fields}
     payload["evidence_signature"] = evidence_signature
     serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False,
@@ -63,10 +64,12 @@ def money(amount: Decimal) -> str:
 
 def advisory(code: str, title: str, explanation: str, action: str,
              *, severity: str = "Review", evidence: list[dict] | None = None,
-             difference: str = "", year: str = "Previous year") -> dict:
+             difference: str = "", year: str = "Previous year",
+             source_period: str = "", target_period: str = "",
+             tolerance: str | None = None) -> dict:
     if severity not in ("Review", "Info"):
         raise ValueError("Unsupported advisory severity")
-    return {
+    result = {
         "code": code, "severity": severity, "period": year,
         "title": title, "explanation": explanation,
         "suggested_action": action, "difference": difference,
@@ -74,6 +77,13 @@ def advisory(code: str, title: str, explanation: str, action: str,
         "acknowledged": False,
         "blocking": False,
     }
+    if source_period:
+        result["source_period"] = source_period
+    if target_period:
+        result["target_period"] = target_period
+    if tolerance is not None:
+        result["tolerance"] = tolerance
+    return result
 
 
 def check_creditor_ageing(prior_fs: str, prior_itr: str,
@@ -277,6 +287,8 @@ def evaluate_evidence_rules(
     seen=set()
     cell_pat=re.compile(r"^[A-Z]{1,3}[1-9][0-9]{0,5}$")
     allowed={"previous_fs","previous_return","current_fs","current_return"}
+    role_period = {kind: ("Previous year" if kind.startswith("previous_")
+                          else "Current year") for kind in allowed}
     opened={}
     try:
         for rule in rules:
@@ -288,6 +300,13 @@ def evaluate_evidence_rules(
             right=str(rule.get("target_kind",""))
             if left not in allowed or right not in allowed:
                 raise ValueError("Rule must reference approved workbook roles")
+            source_period = role_period[left]
+            target_period = role_period[right]
+            period = (source_period if source_period == target_period else
+                      source_period + " to " + target_period)
+            declared_period = str(rule.get("period") or "").strip()
+            if declared_period and declared_period != period:
+                raise ValueError("Evidence rule period conflicts with its workbook roles")
             cells=rule.get("source_cells",[])
             dest=str(rule.get("target_cell","")).upper()
             if (not isinstance(cells,list) or not cells or len(cells)>100 or
@@ -304,14 +323,22 @@ def evaluate_evidence_rules(
             target_sheet=str(rule.get("target_sheet",""))
             if not source_sheet or not target_sheet:
                 raise ValueError("Evidence rules require both worksheet names")
+            coordinates = [
+                {"source":left,"sheet":source_sheet,"cell":str(cell).upper(),
+                 "description":"Expected source cell (not yet verified)"}
+                for cell in cells
+            ]
+            coordinates.append({"source":right,"sheet":target_sheet,"cell":dest,
+                                "description":"Recorded target cell (not yet verified)"})
+            context = {"year":period,"source_period":source_period,
+                       "target_period":target_period,"tolerance":money(tolerance)}
             if not workbooks.get(left) or not workbooks.get(right):
                 results.append(advisory(
                     ident+"_UNVERIFIED",
                     str(rule.get("title") or ident)+" (evidence unavailable)",
                     "One of the required workbooks was not provided.",
                     "Provide both source workbooks to perform this optional classification check.",
-                    severity="Info",
-                    year=str(rule.get("period") or "Unspecified"),
+                    severity="Info",evidence=coordinates,**context,
                 ))
                 continue
             try:
@@ -334,15 +361,16 @@ def evaluate_evidence_rules(
                     ident+"_UNVERIFIED",str(rule.get("title") or ident)+" (not verified)",
                     "The evidence comparison could not be completed: "+str(error),
                     "Review the selected source sheets and amounts.",
-                    severity="Info",year=str(rule.get("period") or "Unspecified"),
+                    severity="Info",evidence=coordinates,**context,
                 ))
                 continue
             if abs(difference)>tolerance:
-                ev=[{"source":left,"sheet":source_sheet,
-                     "cell":",".join(str(x).upper() for x in cells),
-                     "description":"Reviewed expected amount","amount":money(expected)},
-                    {"source":right,"sheet":target_sheet,"cell":dest,
-                     "description":"Recorded amount","amount":money(amount_right)}]
+                ev=[{"source":left,"sheet":source_sheet,"cell":str(cell).upper(),
+                     "description":"Contributing source amount",
+                     "amount":money(amount)}
+                    for cell,amount in zip(cells,left_amounts)]
+                ev.append({"source":right,"sheet":target_sheet,"cell":dest,
+                           "description":"Recorded amount","amount":money(amount_right)})
                 results.append(advisory(
                     ident,str(rule.get("title") or ident),
                     str(rule.get("explanation") or "A cross-workbook classification amount differs from its supporting evidence.")+
@@ -350,8 +378,7 @@ def evaluate_evidence_rules(
                     ". Recorded figure: "+money(amount_right)+".",
                     str(rule.get("suggested_action") or "Inspect both source schedules before accepting this classification."),
                     severity=str(rule.get("severity") or "Review"),
-                    evidence=ev,difference=money(difference),
-                    year=str(rule.get("period") or "Unspecified"),
+                    evidence=ev,difference=money(difference),**context,
                 ))
     finally:
         for book in opened.values():
