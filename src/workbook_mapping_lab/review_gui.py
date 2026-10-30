@@ -13,6 +13,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from .fs_extract import extract_profile, load_profile, scan_sheet
+from .learning import propose_mappings
 from .mapping import load_csv
 from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
@@ -30,7 +31,7 @@ class ReviewDesk(tk.Tk):
         self.latest_saved = None
         self.variables = {
             key:tk.StringVar() for key in (
-                "source","previous","profile","layout","prior_rules",
+                "source","previous","profile","layout","prior_rules","previous_target",
                 "folder","source_controls","output_controls","template","output"
             )
         }
@@ -89,6 +90,7 @@ class ReviewDesk(tk.Tk):
             ("Reviewed extraction profile (.json)","profile"),
             ("Target-field layout (.csv)","layout"),
             ("Existing approved rules (optional, .csv)","prior_rules"),
+            ("Previous-year populated destination (optional)","previous_target"),
             ("Private working folder","folder"),
         ]):
             self._path_row(top,label,key,"dir" if key=="folder" else "file",i)
@@ -178,10 +180,18 @@ class ReviewDesk(tk.Tk):
             rows,issues=extract_profile(source,profile,
                 previous_workbook_path=self._file("previous",False) or None)
             self.profile=profile
-            self.review=ReviewSession(rows,issues,fields,prior)
+            proposals=[]
+            if self._file("previous_target",False):
+                proposals,reference_issues=propose_mappings(
+                    rows,self._file("previous_target"),fields)
+                if reference_issues:
+                    self.status.set(f"Prior destination lookup: {len(reference_issues)} fields unresolved; review manually.")
+            self.review=ReviewSession(rows,issues,fields,prior,suggestions=proposals)
             self.latest_saved=None
             self._draw_rows()
-            self.status.set(f"{len(rows)} selected detail rows; {len(self.review.unresolved())} need decisions; {len(issues)} extraction findings.")
+            suggestion_count=sum(1 for x in self.review.entries.values() if x["review_status"]=="SUGGESTED")
+            self.status.set(f"{len(rows)} details; {suggestion_count} suggested mappings; "
+                            f"{len(self.review.unresolved())} need decisions; {len(issues)} findings.")
         except Exception as err:
             self._show_error(err)
 
