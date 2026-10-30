@@ -44,5 +44,63 @@ class CompanionTests(unittest.TestCase):
         self.assertIn("COMPANION_CHILD_SECTION_INCORRECT",[i["issue"] for i in errors])
 
 
+class DetailEndToEndTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.temp=tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        from test_layout_resolver import make_vendor
+        from test_simulator import write_csv
+        self.write_csv=write_csv
+        self.blank=self.root/"native_export.xlsx"
+        make_vendor(self.blank)
+        self.source=self.root/"source.csv"
+        self.rules=self.root/"rules.csv"
+        self.layout=self.root/"layout.csv"
+        self.control=self.root/"source_control.csv"
+        self.output_control=self.root/"output_control.csv"
+        self.details=self.root/"details.csv"
+        write_csv(self.source,("source_id","section","caption","amount"),[
+            ("RELATED","BS-L","Related loans",500)])
+        write_csv(self.rules,("source_id","field_id","approved"),[
+            ("RELATED","PARENT","yes")])
+        write_csv(self.layout,("field_id","section","sheet","cell","anchor_cell","anchor_text"),[
+            ("PARENT","BS-L","Base","B11","A11","Long-term loans"),
+            ("CHILD","BS-L-DETAIL","Related Details","B11","A11","Deposits from related parties"),
+        ])
+        write_csv(self.control,("section","amount"),[("BS-L",500)])
+        write_csv(self.output_control,("section","total"),[("BS-L",500)])
+
+    def build(self, amount="500"):
+        from workbook_mapping_lab.pipeline import controlled_build
+        self.write_csv(self.details,("parent_field_id","detail_field_id","amount"),[
+            ("PARENT","CHILD",amount)])
+        return controlled_build(
+            source=str(self.source),rules=str(self.rules),
+            layout=str(self.layout),template=str(self.blank),
+            source_controls=str(self.control),output_controls=str(self.output_control),
+            output=str(self.root/"checked.xlsx"),
+            exception_report=str(self.root/"exceptions.json"),
+            companion_details=str(self.details))
+
+    def test_native_export_parent_and_child_filled_once(self):
+        from workbook_mapping_lab.simulator import WorkbookSnapshot
+        result=self.build()
+        self.assertEqual(result["status"],"PASS")
+        self.assertEqual(result["mapped_field_count"],2)
+        self.assertEqual(result["sections"],{"BS-L":"500"})
+        with WorkbookSnapshot(self.root/"checked.xlsx") as b:
+            self.assertEqual(b.cell("Base","B11")["value"],"500")
+            self.assertEqual(b.cell("Related Details","B11")["value"],"500")
+
+    def test_mismatched_child_blocks_import_copy(self):
+        result=self.build(amount="499")
+        self.assertEqual(result["status"],"BLOCKED")
+        self.assertFalse((self.root/"checked.xlsx").exists())
+        self.assertIn("COMPANION_CHILDREN_DO_NOT_SUM_TO_PARENT",
+                      [x["issue"] for x in result["exceptions"]])
+
+
 if __name__=="__main__":
     unittest.main()
