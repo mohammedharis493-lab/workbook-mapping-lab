@@ -1,0 +1,403 @@
+"""Windows/local Tkinter review desk for structured financial workbooks.
+
+Only local files are accessed. The GUI does not connect to accounting software,
+send telemetry, upload source files or silently approve new classifications.
+"""
+from __future__ import annotations
+
+import copy
+import csv
+import json
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox, ttk
+
+from .fs_extract import extract_profile, load_profile, scan_sheet
+from .mapping import load_csv
+from .pipeline import controlled_build
+from .review import ReviewSession, require_private_directory
+from .simulator import WorkbookSnapshot
+
+
+class ReviewDesk(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Workbook Mapping Lab | Local review")
+        self.geometry("1300x830")
+        self.minsize(1050, 650)
+        self.profile = None
+        self.review = None
+        self.latest_saved = None
+        self.variables = {
+            key:tk.StringVar() for key in (
+                "source","previous","profile","layout","prior_rules",
+                "folder","source_controls","output_controls","template","output"
+            )
+        }
+        self.section=tk.StringVar(value="BS-A")
+        self.destination=tk.StringVar()
+        self.sign=tk.StringVar(value="keep")
+        self.portion=tk.StringVar(value="1")
+        self.status=tk.StringVar(value="Load an FS workbook, a reviewed extraction profile and a destination layout.")
+        self._make_widgets()
+
+    def _path_row(self, parent, label, key, kind="file", row=0):
+        ttk.Label(parent,text=label).grid(row=row,column=0,sticky="w",padx=5,pady=4)
+        entry=ttk.Entry(parent,textvariable=self.variables[key],width=90)
+        entry.grid(row=row,column=1,sticky="ew",padx=5)
+        def browse():
+            if kind=="dir":
+                p=filedialog.askdirectory(title="Choose a private folder")
+            elif kind=="save":
+                p=filedialog.asksaveasfilename(
+                    defaultextension=".xlsx",filetypes=[("Excel workbook","*.xlsx")])
+            elif key in ("layout","prior_rules","source_controls","output_controls"):
+                p=filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
+            elif key=="profile":
+                p=filedialog.askopenfilename(filetypes=[("Profile JSON","*.json")])
+            else:
+                p=filedialog.askopenfilename(filetypes=[("Excel workbook","*.xlsx"),("All files","*.*")])
+            if p:
+                self.variables[key].set(p)
+                if key in ("profile","source","layout","prior_rules"):
+                    self.review=None
+                    self.latest_saved=None
+        ttk.Button(parent,text="Browse",command=browse,width=10).grid(row=row,column=2,padx=4)
+        return entry
+
+    def _make_widgets(self):
+        padding={"padx":11,"pady":6}
+        heading=ttk.Frame(self)
+        heading.pack(fill="x",**padding)
+        ttk.Label(heading,text="Workbook Mapping Lab",font=("Segoe UI",16,"bold")).pack(anchor="w")
+        ttk.Label(heading,text="Private review • Historic classifications are reused only when the source is unchanged.").pack(anchor="w")
+        notebook=ttk.Notebook(self)
+        notebook.pack(fill="both",expand=True,padx=12,pady=4)
+        setup=ttk.Frame(notebook)
+        review=ttk.Frame(notebook)
+        build=ttk.Frame(notebook)
+        notebook.add(setup,text=" 1  Sources ")
+        notebook.add(review,text=" 2  Review mappings ")
+        notebook.add(build,text=" 3  Build checked copy ")
+
+        top=ttk.LabelFrame(setup,text="Local source files")
+        top.pack(fill="x",**padding)
+        top.columnconfigure(1,weight=1)
+        for i,(label,key) in enumerate([
+            ("Current-year FS (.xlsx)","source"),
+            ("Previous-year FS (optional)","previous"),
+            ("Reviewed extraction profile (.json)","profile"),
+            ("Target-field layout (.csv)","layout"),
+            ("Existing approved rules (optional, .csv)","prior_rules"),
+            ("Private working folder","folder"),
+        ]):
+            self._path_row(top,label,key,"dir" if key=="folder" else "file",i)
+        row=ttk.Frame(setup)
+        row.pack(fill="x",**padding)
+        ttk.Button(row,text="Extract profile rows",command=self.load_selected).pack(side="left",padx=5)
+        ttk.Button(row,text="Find additional rows",command=self.open_scanner).pack(side="left",padx=5)
+        ttk.Button(row,text="Save updated profile privately",command=self.save_profile).pack(side="left",padx=5)
+        ttk.Label(setup,text=("Use the scan window to add new items. Never include totals and their "
+                              "underlying detail in the same section.")).pack(anchor="w",padx=20)
+
+        frame=ttk.Frame(review)
+        frame.pack(fill="both",expand=True,padx=10,pady=8)
+        cols=("status","section","caption","current","previous","risk","target","location")
+        self.tree=ttk.Treeview(frame,columns=cols,show="headings",selectmode="browse")
+        labels={"status":"Decision","section":"Section","caption":"FS item",
+                "current":"Current","previous":"Prior","risk":"Exceptions",
+                "target":"Target field","location":"Source cell"}
+        widths={"status":105,"section":78,"caption":245,"current":118,
+                "previous":118,"risk":230,"target":185,"location":165}
+        for key in cols:
+            self.tree.heading(key,text=labels[key])
+            self.tree.column(key,width=widths[key],stretch=key in ("caption","risk","target"))
+        self.tree.grid(row=0,column=0,sticky="nsew")
+        bar=ttk.Scrollbar(frame,orient="vertical",command=self.tree.yview)
+        bar.grid(row=0,column=1,sticky="ns")
+        self.tree.configure(yscrollcommand=bar.set)
+        frame.rowconfigure(0,weight=1)
+        frame.columnconfigure(0,weight=1)
+        self.tree.bind("<<TreeviewSelect>>",lambda e:self._selected_row())
+
+        actions=ttk.LabelFrame(review,text="Review selected field")
+        actions.pack(fill="x",padx=12,pady=5)
+        ttk.Label(actions,text="Destination").grid(row=0,column=0,padx=6,pady=8)
+        self.field_choice=ttk.Combobox(actions,textvariable=self.destination,width=42,state="readonly")
+        self.field_choice.grid(row=0,column=1,sticky="ew",padx=4)
+        ttk.Label(actions,text="Portion").grid(row=0,column=2,padx=4)
+        ttk.Entry(actions,textvariable=self.portion,width=7).grid(row=0,column=3,padx=4)
+        ttk.Label(actions,text="Sign").grid(row=0,column=4,padx=4)
+        ttk.Combobox(actions,textvariable=self.sign,values=["keep","reverse"],width=10,state="readonly").grid(row=0,column=5,padx=4)
+        ttk.Button(actions,text="Approve selected",command=self.approve_row).grid(row=0,column=6,padx=8)
+        ttk.Button(actions,text="Revoke",command=self.revoke_row).grid(row=0,column=7,padx=6)
+        actions.columnconfigure(1,weight=1)
+        ttk.Button(review,text="Export private source + approved rules + exception report",
+                   command=self.export_review).pack(anchor="e",padx=14,pady=8)
+
+        task=ttk.LabelFrame(build,text="Only after every extracted item is reviewed")
+        task.pack(fill="x",padx=10,pady=12)
+        task.columnconfigure(1,weight=1)
+        for i,(label,key,kind) in enumerate([
+            ("Original blank destination template","template","file"),
+            ("Independent source section totals","source_controls","file"),
+            ("Independent expected output totals","output_controls","file"),
+            ("New checked-copy output filename","output","save"),
+        ]):
+            self._path_row(task,label,key,kind,i)
+        ttk.Button(task,text="Build and verify checked copy",command=self.build_copy).grid(
+            row=5,column=1,sticky="e",padx=10,pady=15)
+        ttk.Label(build,text="This does not submit to any external application. Use an unused output filename.").pack(
+            anchor="w",padx=20)
+
+        status_bar=ttk.Frame(self)
+        status_bar.pack(fill="x",padx=16,pady=7)
+        ttk.Separator(status_bar,orient="horizontal").pack(fill="x")
+        ttk.Label(status_bar,textvariable=self.status).pack(anchor="w",pady=4)
+
+    def _show_error(self, message):
+        self.status.set("Action blocked: " + str(message)[:250])
+        messagebox.showerror("Unable to continue",str(message),parent=self)
+
+    def _file(self, key, required=True):
+        val=self.variables[key].get().strip()
+        if not val and required:
+            raise ValueError(f"Select {key.replace('_',' ')}")
+        return val
+
+    def load_selected(self):
+        try:
+            source=self._file("source")
+            profile=load_profile(self._file("profile"))
+            fields=load_csv(self._file("layout"),
+                            ("field_id","section","sheet","cell","anchor_cell","anchor_text"))
+            prior=[]
+            if self._file("prior_rules",False):
+                prior=load_csv(self._file("prior_rules"),
+                               ("source_id","field_id","approved"))
+            rows,issues=extract_profile(source,profile,
+                previous_workbook_path=self._file("previous",False) or None)
+            self.profile=profile
+            self.review=ReviewSession(rows,issues,fields,prior)
+            self.latest_saved=None
+            self._draw_rows()
+            self.status.set(f"{len(rows)} selected detail rows; {len(self.review.unresolved())} need decisions; {len(issues)} extraction findings.")
+        except Exception as err:
+            self._show_error(err)
+
+    def _draw_rows(self):
+        self.tree.delete(*self.tree.get_children())
+        if not self.review:
+            return
+        for sid,row in self.review.entries.items():
+            self.tree.insert("",tk.END,iid=sid,values=(
+                row.get("review_status"),row["section"],
+                row["caption"][:130],row["amount"],row.get("previous_amount",""),
+                row.get("risk") or "—",row.get("target_hint") or "—",
+                f'{row.get("sheet","")}!{row.get("cell","")}',
+            ))
+
+    def _selected_row(self):
+        if not self.review:
+            return
+        selected=self.tree.selection()
+        if not selected:
+            return
+        sid=selected[0]
+        row=self.review.entries.get(sid)
+        if not row:
+            return
+        choices=[fid for fid,item in self.review.layout.items()
+                 if item["section"]==row["section"]]
+        self.field_choice["values"]=choices
+        hint=row.get("target_hint","")
+        self.destination.set(hint if hint in choices else (choices[0] if len(choices)==1 else ""))
+        self.sign.set("keep")
+        self.portion.set("1")
+
+    def approve_row(self):
+        try:
+            if not self.review or not self.tree.selection():
+                raise ValueError("Select an extracted row first")
+            sid=self.tree.selection()[0]
+            entry=self.review.entries[sid]
+            accept=not entry.get("risk")
+            if not accept:
+                accept=messagebox.askyesno("Confirm source exception",
+                    "Source requires review:\n"+entry["risk"]+
+                    "\n\nHave you checked the underlying workbook and approved this treatment?",
+                    parent=self)
+            if not accept:
+                return
+            self.review.approve(sid,self.destination.get().strip(),
+                portion=self.portion.get().strip(),sign=self.sign.get(),
+                acknowledge_risks=accept)
+            self.latest_saved=None
+            self._draw_rows()
+            self.status.set(f"Approved {sid}. Remaining items: {len(self.review.unresolved())}.")
+        except Exception as err:
+            self._show_error(err)
+
+    def revoke_row(self):
+        if self.review and self.tree.selection():
+            self.review.revoke(self.tree.selection()[0])
+            self.latest_saved=None
+            self._draw_rows()
+            self.status.set("Mapping revoked. No new file has been built.")
+
+    def save_profile(self):
+        try:
+            if self.profile is None:
+                raise ValueError("Load a profile and extract first")
+            dest=require_private_directory(self._file("folder"))
+            f=dest/"reviewed_extraction_profile.json"
+            if f.exists():
+                raise FileExistsError("Profile already exists; choose a new private folder")
+            f.write_text(json.dumps(self.profile,indent=2),encoding="utf-8")
+            self.status.set("Saved profile to private folder.")
+        except Exception as err:
+            self._show_error(err)
+
+    def open_scanner(self):
+        try:
+            source=self._file("source")
+            profile=load_profile(self._file("profile"))
+            with WorkbookSnapshot(source) as w:
+                sheet_names=list(w.sheets)
+            if not sheet_names:
+                raise ValueError("No readable worksheets")
+        except Exception as err:
+            self._show_error(err)
+            return
+        dlg=tk.Toplevel(self)
+        dlg.title("Find new source rows (manual selection)")
+        dlg.geometry("1040x660")
+        sheet=tk.StringVar(value=profile["ranges"][0]["sheet"])
+        section=tk.StringVar(value="PL-E")
+        start=tk.StringVar(value="1")
+        end=tk.StringVar(value="350")
+        controls=ttk.Frame(dlg)
+        controls.pack(fill="x",padx=10,pady=8)
+        for label,var,options in [
+            ("Worksheet",sheet,sheet_names),
+            ("Section",section,["BS-A","BS-L","BS-MEMO","PL-I","PL-E"])]:
+            ttk.Label(controls,text=label).pack(side="left",padx=3)
+            ttk.Combobox(controls,textvariable=var,values=options,width=27 if label=="Worksheet" else 11).pack(side="left",padx=5)
+        for label,var in (("From",start),("To",end)):
+            ttk.Label(controls,text=label).pack(side="left")
+            ttk.Entry(controls,textvariable=var,width=6).pack(side="left",padx=4)
+        cols=("row","label","value","previous","risk")
+        grid=ttk.Treeview(dlg,columns=cols,show="headings",selectmode="extended")
+        for col,width in zip(cols,(65,430,140,140,210)):
+            grid.heading(col,text=col.title())
+            grid.column(col,width=width,stretch=col in ("label","risk"))
+        grid.pack(fill="both",expand=True,padx=12,pady=6)
+        candidates={}
+        def scan():
+            try:
+                with WorkbookSnapshot(source) as wb:
+                    raw=scan_sheet(wb,sheet.get(),
+                        start_row=int(start.get()),end_row=int(end.get()))
+                grid.delete(*grid.get_children())
+                candidates.clear()
+                for entry in raw:
+                    rid=entry["row"]
+                    candidates[rid]=entry
+                    grid.insert("",tk.END,iid=rid,
+                                values=(rid,entry["caption"][:130],
+                                    entry["current_amount"],entry["previous_amount"],entry["risk"]))
+            except Exception as exc:
+                messagebox.showerror("Cannot scan",str(exc),parent=dlg)
+        def include():
+            selected=grid.selection()
+            if not selected:
+                return
+            if not messagebox.askyesno("Confirm detail-only selection",
+                f"Add {len(selected)} rows as candidate details in section {section.get()}?\n"
+                "Do not select statement totals or repeated note figures.",parent=dlg):
+                return
+            target=None
+            for block in profile["ranges"]:
+                if block["sheet"]==sheet.get() and block["section"]==section.get():
+                    target=block
+                    break
+            if target is None:
+                base=profile["ranges"][0]
+                target={"sheet":sheet.get(),"section":section.get(),
+                        "caption_column":base["caption_column"],
+                        "current_column":base["current_column"],
+                        "previous_column":base.get("previous_column",""),
+                        "unit":base.get("unit","rupees"),"selected_rows":[]}
+                profile["ranges"].append(target)
+            rows=set(target["selected_rows"])
+            rows.update(int(x) for x in selected)
+            target["selected_rows"]=sorted(rows)
+            self.profile=profile
+            # Reading a modified profile requires a private save before release.
+            self.review=None
+            self.latest_saved=None
+            self.status.set(f"Added {len(selected)} candidates. Save updated profile privately, then load and review it.")
+            dlg.destroy()
+        buttons=ttk.Frame(dlg)
+        buttons.pack(pady=8)
+        ttk.Button(buttons,text="Scan",command=scan).pack(side="left",padx=6)
+        ttk.Button(buttons,text="Add selected to profile",command=include).pack(side="left",padx=6)
+        scan()
+
+    def export_review(self):
+        try:
+            if not self.review:
+                raise ValueError("Read profile rows first")
+            self.latest_saved=self.review.save_review(self._file("folder"),
+                prefix="local_review")
+            if self.latest_saved["status"]!="PASS":
+                self.status.set("Review exported privately, but BUILD BLOCKED: outstanding exceptions.")
+                messagebox.showwarning("Outstanding decisions",
+                    f"{len(self.review.unresolved())} rows remain unresolved. "
+                    "See the private exception report.",parent=self)
+            else:
+                self.status.set("Private review exported. All selected rows have approved field mappings.")
+        except Exception as err:
+            self._show_error(err)
+
+    def build_copy(self):
+        try:
+            if not self.review or self.review.unresolved():
+                raise ValueError("Resolve all selected-source mapping decisions first")
+            if not self.latest_saved or self.latest_saved["status"]!="PASS":
+                raise ValueError("Export a PASS private review before building")
+            if not messagebox.askyesno("Build workbook copy",
+                  "Generate a new test-only XLSX using the reviewed rules and independent totals?\n"
+                  "The original template will remain unchanged.",parent=self):
+                return
+            result=controlled_build(
+                source=self.latest_saved["sources"],rules=self.latest_saved["rules"],
+                layout=self._file("layout"),template=self._file("template"),
+                source_controls=self._file("source_controls"),
+                output_controls=self._file("output_controls"),
+                output=self._file("output"),
+                exception_report=str(require_private_directory(self._file("folder"))/
+                                     "build_result_private.json"),
+                rounding="whole_rupees")
+            if result["status"]=="PASS":
+                self.status.set("Checked workbook copy created and independently verified. External import not tested.")
+                messagebox.showinfo("Checked copy created",
+                    "Offline checks passed. The target application's actual import still needs verification.",
+                    parent=self)
+            else:
+                self.status.set("BUILD BLOCKED by reconciliation or mapping exceptions.")
+                messagebox.showwarning("Build blocked",
+                    "Review build_result_private.json in the private folder.",parent=self)
+        except Exception as err:
+            self._show_error(err)
+
+
+def main():
+    try:
+        ReviewDesk().mainloop()
+    except tk.TclError as e:
+        raise RuntimeError("A graphical Windows desktop session is required") from e
+
+
+if __name__=="__main__":
+    main()
