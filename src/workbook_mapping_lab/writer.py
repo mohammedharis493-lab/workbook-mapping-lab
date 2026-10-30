@@ -19,7 +19,10 @@ from zipfile import ZipFile
 from .simulator import WorkbookSnapshot, _load_rows, _money, review
 
 DISALLOWED_PARTS = ("/vbaproject", "_xmlsignatures/", "/externallink")
-CELL_TAG = re.compile(rb'<c\b(?=[^>]*\br="(?P<address>[A-Z]+[0-9]+)")[^>]*?/>')
+CELL_TAG = re.compile(
+    rb'<(?P<elem>(?:[A-Za-z_][A-Za-z0-9_.-]*:)?c)\b'
+    rb'(?=[^>]*\br="(?P<address>[A-Z]+[0-9]+)")[^>]*?/>'
+)
 
 
 def _safe_numeric(v: Decimal) -> str:
@@ -49,7 +52,11 @@ def _patch_existing_cell(raw: bytes, address: str, amount: str) -> bytes:
         raise ValueError("Cell has a non-numeric type; refuse to replace")
     # XML entity/namespace transforms are intentionally avoided.
     rendered = _safe_numeric(_money(amount)).encode("ascii")
-    replacement = tag[:-2] + b"><v>" + rendered + b"</v></c>"
+    element = found.group("elem")
+    ns_prefix = element[:-1] if element.endswith(b":c") else b""
+    value_tag = (ns_prefix + b"v") if ns_prefix else b"v"
+    replacement = (tag[:-2] + b"><" + value_tag + b">" + rendered
+                   + b"</" + value_tag + b"></" + element + b">")
     return raw[:found.start()] + replacement + raw[found.end():]
 
 
