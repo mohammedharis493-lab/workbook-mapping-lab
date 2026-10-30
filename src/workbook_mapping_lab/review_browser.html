@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale">
+<meta name="local-token" content="__LOCAL_SESSION_TOKEN__"><title>Workbook Mapping Lab | Local</title>
+<link rel="stylesheet" href="/app.css"><script defer src="/app.js"></script></head>
+<body><a class="skip" href="#main">Skip to workspace</a>
+<header class="header"><div class="brand"><span class="logo">W</span><div><strong>Workbook Mapping Lab</strong><small>Private financial statement review</small></div></div>
+<div class="zoom-tools" aria-label="Reading controls">
+<button id="smaller" aria-label="Smaller text">A−</button><label for="page-zoom">Text zoom</label>
+<input id="page-zoom" type="range" min="75" max="250" step="5" value="100"><output id="zoom-output">100%</output>
+<button id="bigger" aria-label="Larger text">A+</button><button id="zoom-reset">Reset</button>
+<button id="lens-toggle" aria-pressed="false">Reading lens · Alt M</button>
+<label for="lens-scale">Lens</label><input id="lens-scale" type="range" min="150" max="500" step="25" value="280">
+<output id="lens-output">280%</output><button id="help-zoom">Zoom help</button></div></header>
+<div class="privacy"><span class="dot"></span> Private · This device only <span class="muted">Original Excel exports remain unchanged</span></div>
+<main id="main"><div class="intro"><div><p class="eyebrow">CONTROLLED MAPPING WORKSPACE</p>
+<h1>Review the source. Keep the format.</h1><p class="muted">Extract financial statements, check classifications and populate the original Winman-exported template.</p></div>
+<div class="stat"><small>Mappings needing review</small><strong id="unresolved-count">—</strong><span id="status-mini"></span></div></div>
+<nav class="tabs" aria-label="Workspace"><button class="tab active" data-view="sources">01 Sources</button><button class="tab" data-view="mapping">02 Mapping review</button><button class="tab" data-view="warnings">03 Warnings <b id="warning-count">0</b></button><button class="tab" data-view="build">04 Build checked copy</button></nav>
+<section id="view-sources" class="view"><div class="section-head"><div><h2>Source workbooks</h2><p class="muted">Existing local paths are preloaded from your private session.</p></div><button class="primary" id="extract">Extract &amp; compare</button></div>
+<div class="panel"><div id="source-inputs" class="form-grid"></div><div class="actions"><button id="save-paths">Save paths</button><button id="scan-btn">Scan FS rows</button><button id="resolve-btn">Resolve detailed fields</button></div></div>
+<div class="panel"><h3>Extraction findings</h3><div class="scroll"><table id="findings-table"><thead><tr><th>Finding</th><th>Source</th><th>Explanation</th></tr></thead><tbody></tbody></table></div></div></section>
+<section id="view-mapping" class="view" hidden><div class="section-head"><div><h2>Mapping review</h2><p class="muted">Prior-year mappings are suggestions, not evidence of correctness.</p></div><input id="mapping-search" type="search" placeholder="Search source items" aria-label="Search source items"></div>
+<div class="metrics"><div><small>Extracted</small><strong id="metric-extracted">0</strong></div><div><small>Approved or reused</small><strong id="metric-approved">0</strong></div><div><small>Need review</small><strong id="metric-pending">0</strong></div></div>
+<div class="panel"><div class="scroll"><table id="mapping-table"><thead><tr><th>Status</th><th>Section</th><th>FS item</th><th>Current ₹</th><th>Prior ₹</th><th>Target field</th><th>Risk</th></tr></thead><tbody></tbody></table></div></div>
+<div class="panel"><h3>Selected source: <span id="selected-source">None</span></h3>
+<div class="form-grid compact"><label>Destination<select id="destination"></select></label><label>Portion<input id="portion" value="1"></label><label>Sign<select id="sign"><option value="keep">Keep</option><option value="reverse">Reverse</option></select></label>
+<label class="tick"><input type="checkbox" id="approve-risk"> I reviewed this item’s risk</label></div>
+<div class="actions"><button class="primary" id="approve">Approve selected</button><button id="revoke">Revoke</button></div></div></section>
+<section id="view-warnings" class="view" hidden><div class="section-head"><div><h2>Warnings</h2><p class="muted">Advisory only. Warnings do not change mappings or block generation.</p></div><div class="actions"><button id="warnings-refresh">Re-check</button><button id="warnings-export">Export privately</button></div></div>
+<div class="warning-grid"><div class="panel" id="warning-list"></div><div class="panel">
+<p class="eyebrow">EVIDENCE</p><h3 id="warning-title">Choose a warning</h3>
+<p id="warning-explanation" class="readable muted"></p><div id="warning-evidence"></div><div id="warning-action"></div>
+<label class="wide">Reviewer note<textarea id="warning-note" rows="3"></textarea></label><div class="actions"><button id="warning-reviewed">Mark reviewed</button><button id="warning-reopen">Reopen</button></div>
+</div></div></section>
+<section id="view-build" class="view" hidden><div class="section-head"><div><h2>Build verified copy</h2><p class="muted">This does not import into Winman or overwrite original exports.</p></div></div>
+<div class="panel"><div id="build-inputs" class="form-grid"></div>
+<div class="notice"><strong>Exact-format safeguards</strong><p>Required detailed sheets, amount controls and field approvals must pass. Advisory warnings never block.</p></div>
+<div class="actions"><button id="review-export">Save approved review</button><button class="primary" id="build-copy">Build &amp; verify copy</button></div><p id="build-result" class="muted">No output generated in this browser session.</p></div></section>
+</main><footer>Local-only · Chrome zoom: Ctrl + + / Ctrl + mousewheel · Reading lens: Alt + M</footer>
+<div id="reader-lens" class="lens" hidden aria-hidden="true"><small>READING LENS · <span id="lens-multiplier">280%</span></small><div id="lens-text"></div><small>Hover over a word · Click to pin · Esc to unpin</small></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="help-dialog"><div class="section-head"><h2>Zoom precisely</h2><button id="help-close">Close</button></div>
+<p><strong>Entire page:</strong> use Chrome zoom (Ctrl and +/− or Ctrl + mousewheel).</p>
+<p><strong>Custom text size:</strong> use the 75–250% slider in the header.</p>
+<p><strong>Any word or number:</strong> activate Reading lens or press Alt + M. Hover over text. Click to pin the large text, press Esc to release. Increase lens zoom up to 500%.</p>
+<p>Use Tab to navigate buttons and form controls. All accounting values remain unchanged by zoom.</p></dialog>
+</body></html>
