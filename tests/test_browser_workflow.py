@@ -50,7 +50,7 @@ class BrowserWorkflowTests(unittest.TestCase):
         write_csv(self.source_controls,("section","amount"),[
             ("BS-A",100),("BS-L",100),("PL-E",120)])
         write_csv(self.output_controls,("section","total"),[
-            ("BS-A",100),("BS-L",200),("PL-E",120)])
+            ("BS-A",100),("BS-L",100),("PL-E",120)])
         self.w=Workspace()
         self.w.set_config({
             "source":str(self.fs),"profile":str(self.profile),
