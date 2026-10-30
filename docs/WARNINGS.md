@@ -25,20 +25,23 @@ Warning acknowledgement has no effect on approval or output values.
 When both prior-year FS and prior-year completed return are available and
 their expected row captions are recognised:
 
-1. Read four prior-year trade payable ageing buckets.
-2. Calculate prior-year **over 1 year** = (1–2) + (2–3) + (>3).
-3. Compare this with the value appearing under the historical return's
-   *trade creditors outstanding for more than 1 year* heading.
-4. If different, show the actual difference, source worksheet/cell
-   references and a proposed review action.
-5. Independently check prior-year note totals, heading units, and current
-   year roll-forward evidence (where available).
+1. Read four prior-year creditor ageing buckets from the FS.
+2. Calculate over one year = (1-2 years) + (2-3 years) + (>3 years).
+3. Confirm both separately labelled native export rows:
+   - Creditors!A4/B4: Trade Creditors outstanding over one year.
+   - Creditors!A5/B5: Others.
+4. Compare B4 with the FS over-one-year amount and B5 with the
+   independently reviewed under-one-year remainder, subject to verifying
+   that the 'Others' classification is appropriate for the form version.
+5. Show the exact differences and supporting sheet/cell references;
+   never treat a value in B5 as if it were entered on B4.
 
 For example, synthetic figures:
-- PY FS less-than-one: 30
-- PY FS over-one: 20 + 15 + 5 = 40
-- PY ITR recorded under over-one: 70
-- Advisory: over-one classification appears higher by 30.
+- PY FS less than one year: 30.
+- PY FS over one year: 20 + 15 + 5 = 40.
+- PY Winman export B4 (over one year): blank/0.
+- PY Winman export B5 (Others): 70.
+- Advisory: over-one-year entry is lower by 40; Others is higher by 40.
 
 The overall creditors balance can still be entirely correct.
 

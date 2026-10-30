@@ -73,16 +73,17 @@ class AdvisoryTests(unittest.TestCase):
         result=check_advisories(str(self.fs),str(self.itr),str(self.cy))
         code={x["code"]:x for x in result}
         warning=code["PRIOR_CREDITOR_AGE_CLASSIFICATION"]
-        self.assertEqual(warning["difference"],"30")
+        self.assertEqual(warning["difference"],"-40")
         self.assertFalse(warning["blocking"])
         self.assertFalse(warning["acknowledged"])
         self.assertIn("40",warning["explanation"])
         self.assertIn("30",warning["explanation"])
-        self.assertEqual(len(warning["evidence"]),4)
+        self.assertEqual(len(warning["evidence"]),5)
         self.assertNotIn("AGEING_ROLLFORWARD_NEEDS_SUPPORT",code)
 
     def test_if_previous_age_classification_correct_no_warning(self):
-        self.itr_data["B5"]=40
+        self.itr_data["B4"]=40
+        self.itr_data["B5"]=30
         self.rebuild()
         results=check_advisories(str(self.fs),str(self.itr))
         self.assertNotIn("PRIOR_CREDITOR_AGE_CLASSIFICATION",[x["code"] for x in results])

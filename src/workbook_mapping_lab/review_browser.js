@@ -258,6 +258,13 @@ function renderTemplatePreflight(){
  (current.field_issues||[]).forEach(issue=>{
   list.append(node('li','Field '+(issue.field_id||'')+': '+issue.code));
  });
+ (current.historical_field_locations||[]).forEach(found=>{
+  if(found.status==='HISTORICAL_LABEL_FOUND'){
+   list.append(node('li','Historical reference only: '+found.field_id+
+    ' at '+found.sheet+'!'+found.potential_amount_cell+
+    ' (not a current-year write target).'));
+  }
+ });
 }
 function render(){
  renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();

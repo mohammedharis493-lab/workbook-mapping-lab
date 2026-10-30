@@ -11,6 +11,7 @@ from .layout_resolver import resolve_layout
 from .mapping import load_csv
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
+from .reference_schema import recover_native_reference_fields
 
 
 def preflight_export(template: str, previous_export: str = "",
@@ -28,6 +29,7 @@ def preflight_export(template: str, previous_export: str = "",
 
     prior_count = None
     absent_history = []
+    historical_field_locations = []
     historical_checked = bool(previous_export)
     if historical_checked:
         previous = detail_coverage(previous_export, template)
@@ -43,6 +45,8 @@ def preflight_export(template: str, previous_export: str = "",
     resolved = 0
     if routes_file:
         routes = load_csv(routes_file, ("field_id", "section", "sheet", "caption"))
+        if historical_checked and routes:
+            historical_field_locations = recover_native_reference_fields(previous_export, routes_file)
         for sheet in sorted({r["sheet"] for r in routes} - current_sheets):
             missing_required.append(sheet)
         if routes:
@@ -53,8 +57,10 @@ def preflight_export(template: str, previous_export: str = "",
     missing = sorted({x["sheet"] for x in absent_history} | set(missing_required))
     if missing:
         status = "INCOMPLETE_OFFICIAL_EXPORT"
-        next_step = ("Re-export the current-year workbook with the required native "
-                     "detail schedules available. Do not create missing sheets.")
+        next_step = ("The current-year IMPORT-FORMAT XLSX lacks required native detail "
+                     "worksheets. A separately completed AY ITR6 XLSM may contain "
+                     "those amounts but is not interchangeable with an import template. "
+                     "Check the import options in Winman; do not create missing sheets.")
     elif field_issues or not routes or not historical_checked:
         status = "NEEDS_REVIEW"
         next_step = ("Review the required field definitions and previous-year "
@@ -75,8 +81,10 @@ def preflight_export(template: str, previous_export: str = "",
         "missing_previously_used": absent_history,
         "missing_configured_sheets": missing_required,
         "field_issues": field_issues,
+        "historical_field_locations": historical_field_locations,
         "current_template_sha256": sha,
         "next_step": next_step,
-        "warning": ("This is a read-only, configured-field preflight, not a "
-                    "complete ITR schedule audit. Never fabricate vendor sheets."),
+        "warning": ("This read-only check applies only to the selected import-format "
+                    "XLSX, not to a separate completed ITR6 XLSM export. It is not "
+                    "a complete ITR schedule audit. Never fabricate vendor sheets."),
     }
