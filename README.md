@@ -7,6 +7,8 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 - Read-only financial-statement extraction using reviewed XLSX profiles
 - Detection of newly inserted numeric detail lines in configured watch ranges
 - Historical mapping suggestions even when the target workbook row positions move
+- **Entity-specific ITR schema profiles:** never assume identical assets, liabilities, schedules or subcomponents across different entities; validate entity, AY, return type and native template before reusing a mapping
+- Explicit required/optional/not-applicable/needs-review field states, with no invented zero values for absent optional subcomponents
 - Local Windows exception-review desk with explicit approval and private exports
 - Separate **non-blocking Warnings** tab comparing historical classifications with supporting FS evidence
 - Optional private, reusable cross-workbook advisory checks with review notes
