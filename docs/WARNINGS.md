@@ -83,6 +83,33 @@ The overall creditors balance can still be entirely correct.
 The user should normally check original invoice ageing before accepting a
 classification. This is **not** a legal determination.
 
+### Built-in creditor warning provenance (M4.3b)
+
+The built-in creditor-ageing comparison is only attempted when its expected
+previous-year headings and distinct Winman older-than-one-year/`Others` rows
+are recognised. Its numerical warnings now list the **individual** original
+FS cells C5, D5, E5, F5, G5 and the separately labelled return cells B4/B5;
+the optional recorded detail total B6 is cited when a parent-total warning
+is emitted. Each exact numeric comparison declares tolerance `0` and
+identifies the evidence period. A missing, changed or nonnumeric expected
+amount is not silently treated as zero except the previously documented
+blank Winman B4/B5 case when the other detail amount and FS support exist.
+
+The optional current-year note check separately verifies its source caption
+and bucket heading **before** using its figures. A missing worksheet, changed
+layout, or incomplete number returns an `Info` / unverified warning instead
+of silently disappearing or being treated as a match. Current-year total
+differences list the individual current-year cells C5:G5 and tolerance `0`.
+The simple unpaid-balance roll-forward is labelled **Previous year to Current
+year** and cites each original prior and current amount; it is deliberately
+*not* treated as a strict tolerance test because collections, credit notes and
+invoice dates may make a simple roll-forward inapplicable.
+
+These are checks for the specifically recognised historical workbook layout,
+not proof that the same row captions, groupings or requirements apply to
+another taxpayer, AY, form or Winman export version. No underlying workbooks,
+approved mapping or filing values are modified by an advisory.
+
 ## Desktop use
 
 Open Workbook Mapping Lab, select the previous-year FS and populated

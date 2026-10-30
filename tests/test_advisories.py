@@ -78,7 +78,7 @@ class AdvisoryTests(unittest.TestCase):
         self.assertFalse(warning["acknowledged"])
         self.assertIn("40",warning["explanation"])
         self.assertIn("30",warning["explanation"])
-        self.assertEqual(len(warning["evidence"]),5)
+        self.assertEqual(len(warning["evidence"]),7)
         self.assertNotIn("AGEING_ROLLFORWARD_NEEDS_SUPPORT",code)
 
     def test_if_previous_age_classification_correct_no_warning(self):
