@@ -13,6 +13,7 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 - **Exact vendor-export preservation**: only approved existing numeric cell values change
 - Detect previously active detailed sheets missing from the current-year vendor export
 - Resolve reviewed detailed fields from captions even when cell rows move
+- Compare a generated import workbook with an independently completed current-year ITR workbook, including approved hidden reference worksheets
 - Reconcile parent totals against independently populated detail schedules without double-counting
 - Previous-year mapping discovery and accountant-approved mapping application
 - Exception reports for missing, conflicting and new source items
@@ -42,6 +43,6 @@ python -m workbook_mapping_lab.writer --template "C:\private\blank.xlsx" --layou
 
 The output location must be unused. The writer refuses source overwrites, nonempty or formula destination cells, changed anchor labels, invalid/missing fields and modified package contents. It does **not** submit any data to external software.
 
-See [advisory warnings](docs/WARNINGS.md), [exact vendor export](docs/EXACT_VENDOR_EXPORT.md), [reference benchmark](docs/REFERENCE_BENCHMARK.md), [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), and [privacy policy](PRIVACY.md).
+See [completed-return verification](docs/COMPLETED_RETURN_BENCHMARK.md), [advisory warnings](docs/WARNINGS.md), [exact vendor export](docs/EXACT_VENDOR_EXPORT.md), [reference benchmark](docs/REFERENCE_BENCHMARK.md), [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), and [privacy policy](PRIVACY.md).
 
 Only invented test data is suitable for this repository.
