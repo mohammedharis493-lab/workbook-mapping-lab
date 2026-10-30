@@ -9,6 +9,7 @@ from zipfile import ZipFile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from workbook_mapping_lab.simulator import WorkbookSnapshot, review
+from workbook_mapping_lab.writer import populate
 
 NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -167,6 +168,42 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(result["status"], "BLOCKED")
         self.assertIn("NONEMPTY_TARGET",
                       [e["code"] for e in result["errors"]])
+
+
+    def test_safe_writer_preserves_all_untouched_parts(self):
+        filled = self.root / "checked.xlsx"
+        result = populate(str(self.template), str(self.layout),
+                          str(self.values), str(filled), controls=str(self.controls))
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["modified_sheet_count"], 2)
+        with WorkbookSnapshot(self.template) as before, WorkbookSnapshot(filled) as after:
+            self.assertEqual(before.cell("Balance Sheet", "B1")["value"], "")
+            self.assertEqual(after.cell("Balance Sheet", "B1")["value"], "100")
+            self.assertEqual(after.cell("Profit & Loss Account", "B2")["value"], "30")
+            self.assertEqual(before.archive.namelist(), after.archive.namelist())
+            for part in before.archive.namelist():
+                if part not in ("xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml"):
+                    self.assertEqual(before.archive.read(part), after.archive.read(part))
+
+    def test_writer_rejects_overwriting_template_or_output(self):
+        with self.assertRaises(ValueError):
+            populate(str(self.template), str(self.layout),
+                     str(self.values), str(self.template), controls=str(self.controls))
+        destination = self.root / "checked.xlsx"
+        populate(str(self.template), str(self.layout), str(self.values),
+                 str(destination), controls=str(self.controls))
+        with self.assertRaises(FileExistsError):
+            populate(str(self.template), str(self.layout), str(self.values),
+                     str(destination), controls=str(self.controls))
+
+    def test_writer_fails_closed_on_changed_anchor(self):
+        other = self.root / "wrong-template.xlsx"
+        xlsx(other, bad_anchor=True)
+        filled = self.root / "should-not-exist.xlsx"
+        with self.assertRaises(ValueError):
+            populate(str(other), str(self.layout), str(self.values),
+                     str(filled), controls=str(self.controls))
+        self.assertFalse(filled.exists())
 
 
 if __name__ == "__main__":
