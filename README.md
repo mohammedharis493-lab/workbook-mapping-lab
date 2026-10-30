@@ -8,6 +8,10 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 - Detection of newly inserted numeric detail lines in configured watch ranges
 - Historical mapping suggestions even when the target workbook row positions move
 - Local Windows exception-review desk with explicit approval and private exports
+- **Exact vendor-export preservation**: only approved existing numeric cell values change
+- Detect previously active detailed sheets missing from the current-year vendor export
+- Resolve reviewed detailed fields from captions even when cell rows move
+- Reconcile parent totals against independently populated detail schedules without double-counting
 - Previous-year mapping discovery and accountant-approved mapping application
 - Exception reports for missing, conflicting and new source items
 - Read-only workbook structure simulator and virtual import/re-export
@@ -16,7 +20,7 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 - Workbook sheet/formula/style/metadata preservation checks
 - Public-data screening and synthetic-only automated tests
 
-No proprietary target-application integration or compatibility is claimed. Final acceptance requires a supervised import and re-export in a disposable target record.
+No proprietary target-application integration or compatibility is claimed. The primary acceptance test is accurate field-by-field reproduction of an independently completed current-year reference workbook. A separate application import check may be useful for one-time compatibility verification but is not required to iterate on the mapping engine.
 
 ## Run synthetic tests
 
@@ -36,6 +40,6 @@ python -m workbook_mapping_lab.writer --template "C:\private\blank.xlsx" --layou
 
 The output location must be unused. The writer refuses source overwrites, nonempty or formula destination cells, changed anchor labels, invalid/missing fields and modified package contents. It does **not** submit any data to external software.
 
-See [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), [workflow](docs/WORKFLOW.md), and [privacy policy](PRIVACY.md).
+See [exact vendor export](docs/EXACT_VENDOR_EXPORT.md), [reference benchmark](docs/REFERENCE_BENCHMARK.md), [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), and [privacy policy](PRIVACY.md).
 
 Only invented test data is suitable for this repository.
