@@ -64,7 +64,7 @@ class BrowserTests(unittest.TestCase):
         self.assertEqual(code,200)
         for marker in (
             b'id="source-advanced-inputs"',b'id="build-advanced-inputs"',
-            b'id="build-gate-status"',b'id="view-menu"',b'id="reader-lens"',
+            b'id="build-gate-status"',b'id="view-menu"',b'id="reader-lens"',b'id="benchmark-section"',b'id="benchmark-run"',
             b'id="mapping-table"',b'id="warning-list"'
         ):
             self.assertIn(marker,html)
