@@ -195,6 +195,7 @@ function renderWarnings(){
  warnings.forEach((item,index)=>{
   const b=node('button',null,'warning-card'+(selectedWarning===index?' active':''));
   b.type='button';
+  b.setAttribute('aria-pressed',String(selectedWarning===index));
   b.append(node('span',item.severity,'pill '+item.severity.toLowerCase()));
   b.append(node('strong',item.title));
   b.append(node('small',item.period+(item.difference?' · Difference '+item.difference:'')+
