@@ -234,7 +234,8 @@ class ReviewDesk(tk.Tk):
             self.tree.insert("",tk.END,iid=sid,values=(
                 row.get("review_status"),row["section"],
                 row["caption"][:130],row["amount"],row.get("previous_amount",""),
-                row.get("risk") or "—",row.get("target_hint") or "—",
+                ("; ".join(filter(None,[row.get("risk"),row.get("notice")])) or "—"),
+                row.get("target_hint") or "—",
                 f'{row.get("sheet","")}!{row.get("cell","")}',
             ))
 
