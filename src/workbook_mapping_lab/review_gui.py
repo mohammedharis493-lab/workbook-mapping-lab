@@ -21,7 +21,7 @@ from .simulator import WorkbookSnapshot
 
 
 class ReviewDesk(tk.Tk):
-    def __init__(self):
+    def __init__(self, session_file: str | None = None):
         super().__init__()
         self.title("Workbook Mapping Lab | Local review")
         self.geometry("1300x830")
@@ -41,6 +41,14 @@ class ReviewDesk(tk.Tk):
         self.portion=tk.StringVar(value="1")
         self.status=tk.StringVar(value="Load an FS workbook, a reviewed extraction profile and a destination layout.")
         self._make_widgets()
+        if session_file:
+            data=json.loads(Path(session_file).read_text(encoding="utf-8-sig"))
+            if not isinstance(data,dict) or data.get("version")!=1:
+                raise ValueError("Unrecognised private session settings")
+            for key,value in data.get("paths",{}).items():
+                if key in self.variables and isinstance(value,str):
+                    self.variables[key].set(value)
+            self.status.set("Private session paths loaded; click Extract profile rows to begin.")
 
     def _path_row(self, parent, label, key, kind="file", row=0):
         ttk.Label(parent,text=label).grid(row=row,column=0,sticky="w",padx=5,pady=4)
@@ -406,8 +414,12 @@ class ReviewDesk(tk.Tk):
 
 
 def main():
+    import argparse
+    parser=argparse.ArgumentParser(description="Local-only financial workbook review")
+    parser.add_argument("--session",help="Private local paths/settings JSON")
+    options=parser.parse_args()
     try:
-        ReviewDesk().mainloop()
+        ReviewDesk(session_file=options.session).mainloop()
     except tk.TclError as e:
         raise RuntimeError("A graphical Windows desktop session is required") from e
 
