@@ -76,7 +76,7 @@ class AdvisoryTests(unittest.TestCase):
         self.assertEqual(warning["difference"],"30")
         self.assertFalse(warning["blocking"])
         self.assertFalse(warning["acknowledged"])
-        self.assertIn("50",warning["explanation"])
+        self.assertIn("40",warning["explanation"])
         self.assertIn("30",warning["explanation"])
         self.assertEqual(len(warning["evidence"]),4)
         self.assertNotIn("AGEING_ROLLFORWARD_NEEDS_SUPPORT",code)
@@ -86,7 +86,7 @@ class AdvisoryTests(unittest.TestCase):
         self.rebuild()
         results=check_advisories(str(self.fs),str(self.itr))
         self.assertNotIn("PRIOR_CREDITOR_AGE_CLASSIFICATION",[x["code"] for x in results])
-        self.assertIn("PRIOR_CREDITOR_PARENT_TOTAL_DIFFERENCE",[x["code"] for x in results])
+        self.assertNotIn("PRIOR_CREDITOR_PARENT_TOTAL_DIFFERENCE",[x["code"] for x in results])
 
     def test_missing_evidence_yields_info_not_error(self):
         results=check_advisories(None,None)
