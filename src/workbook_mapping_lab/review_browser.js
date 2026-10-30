@@ -203,8 +203,21 @@ function showWarningDetail(w) {
  const action=$('warning-action');action.replaceChildren();
  action.append(node('p','Suggested check: '+w.suggested_action,'notice'));
 }
+function renderGateStatus(){
+ const el=$('build-gate-status');
+ const open=(state.unresolved||[]).length;
+ const missing=(state.issues||[]).filter(x=>x.issue==='VENDOR_TEMPLATE_DETAIL_MISSING').length;
+ const other=(state.issues||[]).filter(x=>x.issue!=='VENDOR_TEMPLATE_DETAIL_MISSING').length;
+ let text='';
+ if(!state.entries.length){text='Start by extracting the financial statements under Sources.';}
+ else if(missing){text=missing+' required Winman detail schedule'+(missing===1?' is':'s are')+' missing. '+open+' mapping decision'+(open===1?'':'s')+' remain. A complete official export is needed.';}
+ else if(open || other){text=open+' mapping decision'+(open===1?'':'s')+' remain; '+other+' source finding'+(other===1?'':'s')+' require review.';}
+ else{text='Mappings reviewed. Save the review, then run the checked build.';}
+ el.textContent=text;
+ el.classList.toggle('ready',!open&&!missing&&!other&&state.entries.length>0);
+}
 function render(){
- renderPaths();renderMapping();renderFindings();renderWarnings();
+ renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();
 }
 async function run(task,msg) {
  try{
