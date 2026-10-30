@@ -129,6 +129,16 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                 "The expected source labels or Winman over-one-year classification heading differ.",
                 "Verify the actual source rows and select an applicable evidence profile; no amounts have been compared.",
                 severity="Info",
+                evidence=[
+                    {"source":"Previous-year FS ageing","sheet":fs_sheet,"cell":"A5",
+                     "description":"Observed source caption","text":fs.cell(fs_sheet,"A5")["value"]},
+                    {"source":"Previous-year FS ageing","sheet":fs_sheet,"cell":"C4",
+                     "description":"Observed ageing heading","text":fs.cell(fs_sheet,"C4")["value"]},
+                    {"source":"Previous-year Winman export","sheet":itr_sheet,"cell":"A4",
+                     "description":"Observed over-one-year heading","text":itr.cell(itr_sheet,"A4")["value"]},
+                    {"source":"Previous-year Winman export","sheet":itr_sheet,"cell":"A5",
+                     "description":"Observed Others heading","text":itr.cell(itr_sheet,"A5")["value"]},
+                ],source_period="Previous year",target_period="Previous year",
             )]
         bucket_cells=("C5","D5","E5","F5")
         components=[value(fs.cell(fs_sheet,cell)["value"]) for cell in bucket_cells]
@@ -145,30 +155,48 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                 "Previous-year age comparison lacks numeric evidence",
                 "Both creditor detail amounts are blank or FS ageing amounts are unavailable.",
                 "Verify the individual amount cells in the original Winman export.",
-                severity="Info",
+                severity="Info",source_period="Previous year",target_period="Previous year",
+                evidence=[
+                    *({"source":"Previous-year FS ageing","sheet":fs_sheet,"cell":cell,
+                        "description":"Required FS numeric cell (not yet verified)"}
+                      for cell in ("C5","D5","E5","F5","G5")),
+                    *({"source":"Previous-year Winman export","sheet":itr_sheet,"cell":cell,
+                        "description":"Required return amount (not yet verified)"}
+                      for cell in ("B4","B5")),
+                ],
             )]
         if reported_older is None:
             if str(older_raw).strip():
                 return [advisory("HISTORICAL_AGEING_INVALID_AMOUNT",
                                  "Older creditor detail is not a valid amount",
                                  "The B4 amount is nonnumeric.",
-                                 "Inspect the original export.",severity="Info")]
+                                 "Inspect the original export.",severity="Info",
+                                 source_period="Previous year",target_period="Previous year",
+                                 evidence=[{"source":"Previous-year Winman export",
+                                            "sheet":itr_sheet,"cell":"B4",
+                                            "description":"Unverified nonnumeric creditor detail",
+                                            "text":str(older_raw)}])]
             reported_older=Decimal("0")
         if reported_younger is None:
             if str(younger_raw).strip():
                 return [advisory("HISTORICAL_AGEING_INVALID_AMOUNT",
                                  "Other creditor detail is not a valid amount",
                                  "The B5 amount is nonnumeric.",
-                                 "Inspect the original export.",severity="Info")]
+                                 "Inspect the original export.",severity="Info",
+                                 source_period="Previous year",target_period="Previous year",
+                                 evidence=[{"source":"Previous-year Winman export",
+                                            "sheet":itr_sheet,"cell":"B5",
+                                            "description":"Unverified nonnumeric creditor detail",
+                                            "text":str(younger_raw)}])]
             reported_younger=Decimal("0")
         under_one,one_two,two_three,over_three=components
         over_one=one_two+two_three+over_three
         references=[
-            {"source":"Previous-year FS ageing", "sheet":fs_sheet,
-             "cell":"C5", "description":"Less than one year", "amount":money(under_one)},
-            {"source":"Previous-year FS ageing","sheet":fs_sheet,
-             "cell":"D5:F5", "description":"Sum of over-one-year ageing buckets",
-             "amount":money(over_one)},
+            *({"source":"Previous-year FS ageing","sheet":fs_sheet,
+               "cell":cell,"description":caption,"amount":money(amount)}
+              for cell,caption,amount in zip(
+                  bucket_cells,("Less than one year","One to two years",
+                                "Two to three years","More than three years"),components)),
             {"source":"Previous-year FS ageing", "sheet":fs_sheet,
              "cell":"G5", "description":"Overall creditor balance", "amount":money(fs_total)},
             {"source":"Previous-year Winman export", "sheet":itr_sheet,
@@ -186,6 +214,7 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                 "Review the note and outstanding records. Do not assume either amount is correct.",
                 evidence=references,
                 difference=money(sum(components,Decimal("0"))-fs_total),
+                source_period="Previous year",target_period="Previous year",tolerance="0",
             ))
         if prior_total is not None and prior_total!=fs_total:
             notes.append(advisory(
@@ -197,6 +226,7 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                                           "sheet":itr_sheet,"cell":"B6",
                                           "amount":money(prior_total),"description":"Reported detail total"}],
                 difference=money(prior_total-fs_total),
+                source_period="Previous year",target_period="Previous year",tolerance="0",
             ))
         if reported_older != over_one or reported_younger != under_one:
             notes.append(advisory(
@@ -210,6 +240,7 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                 "Check original invoice dates and the meaning of Others in this year of Winman; do not automatically repeat or reverse the historical classification.",
                 evidence=references,
                 difference=money(reported_older-over_one),
+                source_period="Previous year",target_period="Previous year",tolerance="0",
             ))
         # The old note's unit heading can be internally inconsistent with
         # figures reported as rupees. Warn, but do not silently rescale them.
@@ -223,13 +254,61 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                 severity="Info",
                 evidence=[{"source":"Previous-year FS ageing","sheet":fs_sheet,
                            "cell":"G2","description":"Ageing units heading","text":units}],
+                source_period="Previous year",
             ))
         if current_fs:
             with WorkbookSnapshot(current_fs) as cy:
-                if fs_sheet in cy.sheets:
+                if fs_sheet not in cy.sheets:
+                    notes.append(advisory(
+                        "CURRENT_FS_AGEING_NOT_FOUND",
+                        "Current-year creditor ageing worksheet not verified",
+                        "The previously verified worksheet name is not present in the selected current-year FS.",
+                        "Select a reviewed current-year ageing layout; no current amounts were compared.",
+                        severity="Info",year="Current year",source_period="Current year",
+                    ))
+                elif ("msme" not in cy.cell(fs_sheet,"A5")["value"].casefold()
+                      or "less than 1" not in cy.cell(fs_sheet,"C4")["value"].casefold()):
+                    notes.append(advisory(
+                        "CURRENT_FS_AGEING_LAYOUT_UNRECOGNISED",
+                        "Current-year creditor ageing labels require review",
+                        "The expected current-year row caption or bucket heading differs.",
+                        "Verify the current-year schedule before comparing amounts.",
+                        severity="Info",year="Current year",source_period="Current year",
+                        evidence=[
+                            {"source":"Current-year FS ageing","sheet":fs_sheet,
+                             "cell":"A5","description":"Observed row caption",
+                             "text":cy.cell(fs_sheet,"A5")["value"]},
+                            {"source":"Current-year FS ageing","sheet":fs_sheet,
+                             "cell":"C4","description":"Observed bucket heading",
+                             "text":cy.cell(fs_sheet,"C4")["value"]},
+                        ],
+                    ))
+                else:
                     current=[value(cy.cell(fs_sheet,cell)["value"]) for cell in bucket_cells]
                     current_total=value(cy.cell(fs_sheet,"G5")["value"])
-                    if all(a is not None for a in current) and current_total is not None:
+                    if any(a is None for a in current) or current_total is None:
+                        notes.append(advisory(
+                            "CURRENT_FS_AGEING_INCOMPLETE",
+                            "Current-year FS ageing lacks numeric evidence",
+                            "At least one current-year ageing bucket or its total is unavailable or nonnumeric.",
+                            "Check original current-year worksheet cells; do not infer missing amounts as zero.",
+                            severity="Info",year="Current year",source_period="Current year",
+                            evidence=[
+                                {"source":"Current-year FS ageing","sheet":fs_sheet,
+                                 "cell":cell,"description":"Required numeric cell (not yet verified)"}
+                                for cell in (*bucket_cells,"G5")
+                            ],
+                        ))
+                    else:
+                        current_evidence=[
+                            {"source":"Current-year FS ageing","sheet":fs_sheet,
+                             "cell":cell,"description":label,"amount":money(amount)}
+                            for cell,label,amount in zip(
+                                (*bucket_cells,"G5"),
+                                ("Less than one year","One to two years","Two to three years",
+                                 "More than three years","Overall creditor balance"),
+                                (*current,current_total))
+                        ]
                         actual=sum(current,Decimal("0"))
                         if actual!=current_total:
                             notes.append(advisory(
@@ -237,9 +316,9 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                                 "Current-year FS ageing buckets differ from note total",
                                 "The current ageing breakdown does not match its stated total.",
                                 "Reconcile the current ageing schedule and ledger before finalising the mapping.",
-                                evidence=[{"source":"Current-year FS ageing","sheet":fs_sheet,
-                                           "cell":"C5:G5","description":"Four ageing buckets and total"}],
+                                evidence=current_evidence,
                                 difference=money(actual-current_total), year="Current year",
+                                source_period="Current year",target_period="Current year",tolerance="0",
                             ))
                         # A roll-forward cannot be established without settled
                         # balances and invoice dates. Show as an advisory only.
@@ -251,12 +330,13 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                                 "Current-year creditor ageing needs roll-forward evidence",
                                 "Older age buckets differ from the simple unpaid-balance roll of previous-year ageing.",
                                 "Check settlements, credit notes and invoice dates before concluding that the ageing is wrong.",
-                                evidence=[
-                                    {"source":"Previous-year FS ageing","sheet":fs_sheet,
-                                     "cell":"C5:F5","description":"Previous-year buckets"},
-                                    {"source":"Current-year FS ageing","sheet":fs_sheet,
-                                     "cell":"D5:F5","description":"Current-year older buckets"}],
-                                year="Current year",
+                                evidence=[entry for entry in references
+                                          if entry["source"]=="Previous-year FS ageing"
+                                          and entry["cell"] in bucket_cells] +
+                                         [entry for entry in current_evidence
+                                          if entry["cell"] in ("D5","E5","F5")],
+                                year="Previous year to Current year",
+                                source_period="Previous year",target_period="Current year",
                             ))
     return notes
 
