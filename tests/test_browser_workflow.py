@@ -23,7 +23,7 @@ class BrowserWorkflowTests(unittest.TestCase):
         make_xlsx(self.fs,{
             1:{"A":"Statement 2026"},
             2:{"A":"Cash","C":100,"D":95},
-            3:{"A":"Loans","C":200,"D":210},
+            3:{"A":"Loans","C":100,"D":110},
             4:{"A":"Audit expenses","C":90,"D":85},
             5:{"A":"Registration costs","C":30,"D":25},
         })
@@ -48,7 +48,7 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.source_controls=self.root/"controls_fs.csv"
         self.output_controls=self.root/"controls_target.csv"
         write_csv(self.source_controls,("section","amount"),[
-            ("BS-A",100),("BS-L",200),("PL-E",120)])
+            ("BS-A",100),("BS-L",100),("PL-E",120)])
         write_csv(self.output_controls,("section","total"),[
             ("BS-A",100),("BS-L",200),("PL-E",120)])
         self.w=Workspace()
@@ -80,7 +80,7 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.assertEqual(result["result"]["status"],"PASS")
         with WorkbookSnapshot(self.output) as generated:
             self.assertEqual(generated.cell("Balance Sheet","B1")["value"],"100")
-            self.assertEqual(generated.cell("Balance Sheet","B2")["value"],"200")
+            self.assertEqual(generated.cell("Balance Sheet","B2")["value"],"100")
             self.assertEqual(generated.cell("Profit & Loss Account","B1")["value"],"90")
             self.assertEqual(generated.cell("Profit & Loss Account","B2")["value"],"30")
         self.assertEqual(self.template.read_bytes(),template_bytes)
