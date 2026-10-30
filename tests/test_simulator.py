@@ -41,13 +41,12 @@ def xlsx(path: Path, *, filled=False, bad_formula=False, bad_anchor=False):
                                       {"r": "A" + str(r), "t": "inlineStr"})
                 ET.SubElement(ET.SubElement(label, "{" + NS + "}is"), "{" + NS + "}t").text = (
                     "Incorrect" if bad_anchor and i == 1 and r == 1 else name)
-                if True:
-                    # Real templates provide an explicitly styled blank destination cell.
-                    target = ET.SubElement(row, "{" + NS + "}c", {"r": "B" + str(r)})
-                    if bad_formula and i == 1 and r == 1:
-                        ET.SubElement(target, "{" + NS + "}f").text = "1+2"
-                    else:
-                        ET.SubElement(target, "{" + NS + "}v").text = str(
+                # Real templates include an explicit, initially blank target cell.
+                target = ET.SubElement(row, "{" + NS + "}c", {"r": "B" + str(r)})
+                if bad_formula and i == 1 and r == 1:
+                    ET.SubElement(target, "{" + NS + "}f").text = "1+2"
+                elif filled:
+                    ET.SubElement(target, "{" + NS + "}v").text = str(
                             (100, 200)[r-1] if i == 1 else (90, 30)[r-1])
             z.writestr("xl/worksheets/sheet" + str(i) + ".xml",
                        ET.tostring(root, encoding="utf-8"))
