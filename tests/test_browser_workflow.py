@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
 from test_fs_extract import make_xlsx
 from test_simulator import xlsx, write_csv
+from test_manual_benchmark import native
 from workbook_mapping_lab.review_browser import Workspace
 from workbook_mapping_lab.simulator import WorkbookSnapshot
 
@@ -86,6 +87,44 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.assertEqual(self.template.read_bytes(),template_bytes)
         self.assertEqual(self.fs.read_bytes(),fs_bytes)
         self.assertTrue(all(not w["blocking"] for w in self.w.warnings))
+
+    def test_read_only_completed_return_benchmark_after_approved_build(self):
+        self.w.extract()
+        targets={"Cash":"B-CASH","Loans":"B-LOAN",
+                 "Audit expenses":"P-AUDIT","Registration costs":"P-OTHER"}
+        for item in self.w.data()["entries"]:
+            self.w.approve({"source_id":item["source_id"],
+                            "field_id":targets[item["caption"]]})
+        self.w.save_review()
+        result=self.w.build()
+        self.assertEqual(result["result"]["status"],"PASS")
+        reference=self.root/"manual_reference.xlsm"
+        native(reference,["Part A-BS","Part P-L"],{
+            "Part A-BS":{"A9":"Cash holdings","E9":100,
+                         "A10":"Loans received","E10":100},
+            "Part P-L":{"A11":"Audit costs","E11":90,
+                        "A12":"Registration","E12":30},
+        })
+        compare=self.root/"comparison.csv"
+        write_csv(compare,(
+            "field_id","expected_amount","generated_sheet","generated_label",
+            "generated_value_col","manual_sheet","manual_label","manual_value_col",
+            "manual_label_cell"),[
+            ("CASH",100,"Balance Sheet","Cash","B","Part A-BS","Cash holdings","E","A9"),
+            ("LOAN",100,"Balance Sheet","Loans","B","Part A-BS","Loans received","E","A10"),
+            ("AUDIT",90,"Profit & Loss Account","Audit fees","B","Part P-L","Audit costs","E","A11"),
+            ("FEES",30,"Profit & Loss Account","Registration costs","B","Part P-L","Registration","E","A12"),
+        ])
+        before=self.output.read_bytes(),reference.read_bytes()
+        self.w.set_config({"benchmark_generated":str(self.output),
+                           "completed_reference":str(reference),
+                           "benchmark_contract":str(compare)})
+        result=self.w.benchmark_completed()["latest_benchmark"]
+        self.assertEqual(result["status"],"ALL_CONFIGURED_FIELDS_MATCH")
+        self.assertEqual(result["fully_matched"],4)
+        self.assertEqual(result["unavailable_targets"],0)
+        self.assertTrue(Path(result["private_report"]).exists())
+        self.assertEqual(before,(self.output.read_bytes(),reference.read_bytes()))
 
     def test_no_build_without_explicit_review_and_saved_controls(self):
         state=self.w.extract()
