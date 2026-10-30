@@ -20,6 +20,21 @@ The Warnings tab is intentionally separate from strict structural controls:
 
 Warning acknowledgement has no effect on approval or output values.
 
+### Evidence-bound review decisions (M4.1)
+
+The browser and legacy desktop review screen now bind each acknowledgement to
+the exact source workbook/rule-file bytes and the warning's actual evidence,
+period, amounts and explanation. Refreshing unchanged evidence preserves a
+reviewer's note in the active session. Choosing another entity or evidence file,
+changing a source file (even an unrelated cell), or changing a warning clears
+the affected acknowledgement. A warning that disappears also loses its prior
+decision. This prevents old reviews from silently applying to revised accounts.
+
+Private JSON exports include an opaque evidence digest for audit traceability.
+They are **snapshots**, not files automatically loaded as approvals. Durable
+cross-session reloading of checked, evidence-bound decisions is a separate M4.2
+task; it must reject mismatched entity, AY, form, file hash or warning content.
+
 ## Default automatic ageing warning
 
 When both prior-year FS and prior-year completed return are available and

@@ -19,7 +19,8 @@ from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
-from .advisories import check_advisories,advisory,evaluate_evidence_rules,load_evidence_rules
+from .advisories import (check_advisories, advisory, evaluate_evidence_rules,
+                         load_evidence_rules, evidence_digest, warning_review_key)
 from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
 
 
@@ -35,6 +36,7 @@ class ReviewDesk(tk.Tk):
         self.extraction_issues = []
         self.advisory_items = []
         self.advisory_decisions = {}
+        self._warning_evidence_signature = ""
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
@@ -222,7 +224,7 @@ class ReviewDesk(tk.Tk):
         return val
 
     def _warning_key(self, item):
-        return "|".join((item.get("code",""),item.get("period",""),item.get("title","")))
+        return warning_review_key(item, self._warning_evidence_signature)
 
     def refresh_warnings(self):
         """Independent evidence checks; never alter approved mappings."""
@@ -230,6 +232,15 @@ class ReviewDesk(tk.Tk):
         prior_irs=self._file("previous_target",False)
         current=self._file("source",False)
         try:
+            signature = evidence_digest({
+                "previous_fs": previous,
+                "previous_return": prior_irs,
+                "current_fs": current,
+                "additional_rules": self._file("advisory_rules",False),
+            })
+            if signature != self._warning_evidence_signature:
+                self.advisory_decisions.clear()
+            self._warning_evidence_signature = signature
             self.advisory_items=check_advisories(previous,prior_irs,current or None)
             if self._file("advisory_rules",False):
                 rule_checks=load_evidence_rules(self._file("advisory_rules"))
@@ -239,6 +250,8 @@ class ReviewDesk(tk.Tk):
                     "current_fs":current,
                 },rule_checks))
         except (ValueError,KeyError,OSError) as err:
+            self.advisory_decisions.clear()
+            self._warning_evidence_signature = ""
             self.advisory_items=[advisory(
                 "EVIDENCE_CHECK_INCOMPLETE",
                 "Could not verify historical classification evidence",
@@ -246,6 +259,9 @@ class ReviewDesk(tk.Tk):
                 "Review the input workbook layouts. The mapping workflow is unaffected.",
                 severity="Info",
             )]
+        active={self._warning_key(item) for item in self.advisory_items}
+        self.advisory_decisions={key:decision for key,decision in
+                                 self.advisory_decisions.items() if key in active}
         self._draw_warnings()
         flagged=sum(item["severity"]=="Review" for item in self.advisory_items)
         self.status.set(f"Advisory review: {flagged} issue(s) to consider; "
@@ -338,6 +354,7 @@ class ReviewDesk(tk.Tk):
             dest.write_text(json.dumps({
                 "purpose":"Optional accounting warnings; no mappings changed",
                 "not_a_release_gate":True,
+                "evidence_sha256":self._warning_evidence_signature,
                 "warnings":records,
             },indent=2),encoding="utf-8")
             self.status.set("Private warnings report saved; no financial data modified.")

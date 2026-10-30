@@ -19,7 +19,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .advisories import advisory, check_advisories, evaluate_evidence_rules, load_evidence_rules
+from .advisories import (advisory, check_advisories, evaluate_evidence_rules,
+                         load_evidence_rules, evidence_digest, warning_review_key)
 from .fs_extract import extract_profile, load_profile, scan_sheet
 from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
 from .learning import propose_mappings
@@ -65,6 +66,7 @@ class Workspace:
         self.issues: list[dict] = []
         self.warnings: list[dict] = []
         self.decisions: dict[str, dict] = {}
+        self._warning_evidence_signature = ""
         self.latest_saved: dict | None = None
         self.latest_benchmark: dict | None = None
         self.latest_preflight: dict | None = None
@@ -99,10 +101,8 @@ class Workspace:
             "entity_discovery": self.entity_discovery,
         }
 
-    @staticmethod
-    def warning_key(item: dict) -> str:
-        return "|".join((item.get("code", ""), item.get("period", ""),
-                         item.get("title", "")))
+    def warning_key(self, item: dict) -> str:
+        return warning_review_key(item, self._warning_evidence_signature)
 
     def set_config(self, updates: dict) -> dict:
         if not isinstance(updates, dict) or any(key not in CONFIG_KEYS for key in updates):
@@ -118,6 +118,15 @@ class Workspace:
             self.review = None
             self.profile = None
             self.issues = []
+        if changed.intersection({
+            "source", "previous", "previous_target", "advisory_rules",
+            "entity_key", "assessment_year", "itr_form"
+        }):
+            # A decision must never silently follow another entity or a
+            # newly selected set of evidence workbooks.
+            self.decisions.clear()
+            self.warnings = []
+            self._warning_evidence_signature = ""
         if changed.intersection({"template", "layout", "entity_key", "assessment_year", "itr_form"}):
             self.entity_discovery = None
         if changed:
@@ -130,6 +139,15 @@ class Workspace:
 
     def refresh_warnings(self) -> dict:
         try:
+            signature = evidence_digest({
+                "previous_fs": self.file("previous", False),
+                "previous_return": self.file("previous_target", False),
+                "current_fs": self.file("source", False),
+                "additional_rules": self.file("advisory_rules", False),
+            })
+            if signature != self._warning_evidence_signature:
+                self.decisions.clear()
+            self._warning_evidence_signature = signature
             notes = check_advisories(self.file("previous", False),
                                      self.file("previous_target", False),
                                      self.file("source", False) or None)
@@ -142,6 +160,8 @@ class Workspace:
                 }, custom)
             self.warnings = notes
         except (OSError, ValueError, KeyError) as e:
+            self.decisions.clear()
+            self._warning_evidence_signature = ""
             self.warnings = [advisory(
                 "EVIDENCE_CHECK_INCOMPLETE",
                 "Evidence could not be checked",
@@ -149,6 +169,11 @@ class Workspace:
                 "Review the provided files and their year/sheet labels.",
                 severity="Info",
             )]
+        # Even with unchanged files, changed rule interpretation must never
+        # retain a decision for a warning that disappeared and later returned.
+        active = {self.warning_key(item) for item in self.warnings}
+        self.decisions = {key: value for key, value in self.decisions.items()
+                          if key in active}
         return self.data()
 
     def extract(self) -> dict:
@@ -230,6 +255,7 @@ class Workspace:
         ]
         path.write_text(json.dumps({
             "purpose": "Non-blocking evidence warnings",
+            "evidence_sha256": self._warning_evidence_signature,
             "warnings": records,
         }, indent=2), encoding="utf-8")
         return {"path": str(path), "count": len(records)}
