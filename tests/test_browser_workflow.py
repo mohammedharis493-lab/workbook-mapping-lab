@@ -1,5 +1,6 @@
-"""Synthetic browser-workspace acceptance: FS -> review -> original export copy."""
+﻿"""Synthetic browser-workspace acceptance: FS -> review -> original export copy."""
 import json
+import hashlib
 import sys
 import tempfile
 import unittest
@@ -52,6 +53,21 @@ class BrowserWorkflowTests(unittest.TestCase):
             ("BS-A",100),("BS-L",100),("PL-E",120)])
         write_csv(self.output_controls,("section","total"),[
             ("BS-A",100),("BS-L",100),("PL-E",120)])
+        self.entity_manifest=self.root/"entity_schema_private.json"
+        import csv
+        with self.layout.open(encoding="utf-8", newline="") as file:
+            layout_rows=list(csv.DictReader(file))
+        fields=[{
+            "field_id":line["field_id"],"section":line["section"],
+            "sheet":line["sheet"],"caption":line["anchor_text"],
+            "anchor_column":"A","amount_column":"B","applicability":"required",
+        } for line in layout_rows]
+        self.entity_manifest.write_text(json.dumps({
+            "version":1,"entity_key":"synthetic-company",
+            "assessment_year":"2026-27","itr_form":"ITR-6",
+            "template_sha256":hashlib.sha256(self.template.read_bytes()).hexdigest(),
+            "fields":fields,
+        }),encoding="utf-8")
         self.w=Workspace()
         self.w.set_config({
             "source":str(self.fs),"profile":str(self.profile),
@@ -59,6 +75,10 @@ class BrowserWorkflowTests(unittest.TestCase):
             "template":str(self.template),"output":str(self.output),
             "source_controls":str(self.source_controls),
             "output_controls":str(self.output_controls),
+            "entity_key":"synthetic-company",
+            "assessment_year":"2026-27",
+            "itr_form":"ITR-6",
+            "entity_schema_profile":str(self.entity_manifest),
         })
 
     def test_full_review_and_copy_while_optional_warning_is_unreviewed(self):
@@ -126,6 +146,32 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.assertTrue(Path(result["private_report"]).exists())
         self.assertEqual(before,(self.output.read_bytes(),reference.read_bytes()))
 
+    def test_missing_schema_blocks_even_after_approved_mapping(self):
+        self.w.extract()
+        destinations={"Cash":"B-CASH","Loans":"B-LOAN",
+                      "Audit expenses":"P-AUDIT","Registration costs":"P-OTHER"}
+        for line in self.w.data()["entries"]:
+            self.w.approve({"source_id":line["source_id"],
+                            "field_id":destinations[line["caption"]]})
+        self.w.save_review()
+        self.w.config["entity_schema_profile"]=""
+        with self.assertRaisesRegex(ValueError,"entity schema profile"):
+            self.w.build()
+        self.assertFalse(self.output.exists())
+
+    def test_other_entity_cannot_build(self):
+        self.w.extract()
+        destinations={"Cash":"B-CASH","Loans":"B-LOAN",
+                      "Audit expenses":"P-AUDIT","Registration costs":"P-OTHER"}
+        for line in self.w.data()["entries"]:
+            self.w.approve({"source_id":line["source_id"],
+                            "field_id":destinations[line["caption"]]})
+        self.w.save_review()
+        self.w.config["entity_key"]="different-company"
+        with self.assertRaisesRegex(ValueError,"IDENTITY_OR_YEAR_MISMATCH"):
+            self.w.build()
+        self.assertFalse(self.output.exists())
+
     def test_no_build_without_explicit_review_and_saved_controls(self):
         state=self.w.extract()
         self.assertEqual(len(state["unresolved"]),4)
@@ -137,3 +183,5 @@ class BrowserWorkflowTests(unittest.TestCase):
 
 if __name__=="__main__":
     unittest.main()
+
+
