@@ -31,9 +31,29 @@ the affected acknowledgement. A warning that disappears also loses its prior
 decision. This prevents old reviews from silently applying to revised accounts.
 
 Private JSON exports include an opaque evidence digest for audit traceability.
-They are **snapshots**, not files automatically loaded as approvals. Durable
-cross-session reloading of checked, evidence-bound decisions is a separate M4.2
-task; it must reject mismatched entity, AY, form, file hash or warning content.
+The ordinary **Export warnings privately** option is a report snapshot, not an
+automatic approval source.
+
+### Private cross-session review journal (M4.2)
+
+In the Chrome Warnings tab, expand **Private review journal** after selecting
+the entity, assessment year and ITR form under Build copy:
+
+1. Refresh the original evidence and review the warnings.
+2. Choose **Save review decisions** to create a new immutable-name JSON file
+   in the configured private working folder. No source workbook is changed.
+3. In a later session with the **same** entity, AY, ITR form and source files,
+   paste the private journal path and choose **Load matching decisions**.
+4. The app rechecks source bytes and warning fingerprints. A changed workbook,
+   rule file, identity or warning list **rejects the entire restore**. Nothing
+   is partially marked reviewed. The file must be inside the private folder.
+
+The journal contains the exact-evidence SHA-256, warning identifiers, review
+notes and acknowledged flags. It contains no authorization to approve a mapping,
+modify a workbook, submit an ITR or suppress a blocking exception. Locally
+editable JSON is a convenience for review continuity, not authenticated audit
+sign-off. The older Tkinter review interface still offers report export but not
+journal import; its decisions remain session-only.
 
 ## Default automatic ageing warning
 
