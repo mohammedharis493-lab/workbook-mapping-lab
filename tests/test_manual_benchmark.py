@@ -9,14 +9,15 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
 from test_simulator import NS, REL, PKG, write_csv
 from workbook_mapping_lab.manual_benchmark import compare_completed_return
 
-def native(path, sheet_names, rows):
+def native(path, sheet_names, rows, *, hidden_sheets=()):
     root=ET.Element("{"+NS+"}workbook",{"xmlns:r":REL})
     sheets=ET.SubElement(root,"{"+NS+"}sheets")
     relations=ET.Element("{"+PKG+"}Relationships")
     with ZipFile(path,"w") as z:
         for num,name in enumerate(sheet_names,1):
             ET.SubElement(sheets,"{"+NS+"}sheet",{
-                "name":name,"sheetId":str(num),"{"+REL+"}id":"rId"+str(num)})
+                "name":name,"sheetId":str(num),"{"+REL+"}id":"rId"+str(num),
+                "state":"hidden" if name in hidden_sheets else "visible"})
             ET.SubElement(relations,"{"+PKG+"}Relationship",{
                 "Id":"rId"+str(num),"Type":REL+"/worksheet",
                 "Target":f"worksheets/sheet{num}.xml"})
@@ -140,6 +141,29 @@ class ManualBenchmarkTests(unittest.TestCase):
             writer.writeheader();writer.writerows(rows)
         result=compare_completed_return(str(self.gen),str(self.ref),str(self.rules))
         self.assertIn("MANUAL_FIELD_APPROVED_ANCHOR_CHANGED",result["details"][0]["checks"])
+
+    def test_hidden_manual_reference_with_approved_anchor_can_be_read(self):
+        native(self.ref,["Part A-BS"],{"Part A-BS":{
+            "A12":"Related-party deposits","E12":300,
+            "A13":"Trade creditors due over 1 year","E13":100}},
+            hidden_sheets=("Part A-BS",))
+        import csv
+        with self.rules.open("r",encoding="utf-8",newline="") as f:
+            data=list(csv.DictReader(f))
+        data[0]["manual_label_cell"]="A12"
+        data[1]["manual_label_cell"]="A13"
+        with self.rules.open("w",encoding="utf-8",newline="") as f:
+            wr=csv.DictWriter(f,fieldnames=list(data[0]));wr.writeheader();wr.writerows(data)
+        results=compare_completed_return(str(self.gen),str(self.ref),str(self.rules))
+        self.assertEqual(results["fully_matched"],2)
+
+    def test_hidden_manual_sheet_without_approved_anchor_is_not_used(self):
+        native(self.ref,["Part A-BS"],{"Part A-BS":{
+            "A12":"Related-party deposits","E12":300,
+            "A13":"Trade creditors due over 1 year","E13":100}},
+            hidden_sheets=("Part A-BS",))
+        result=compare_completed_return(str(self.gen),str(self.ref),str(self.rules))
+        self.assertIn("MANUAL_FIELD_HIDDEN_SHEET",result["details"][0]["checks"])
 
     def test_duplicate_field_ids_block(self):
         self.rows[1]=("LOAN","100","Balance Sheet","Trade payables","B",
