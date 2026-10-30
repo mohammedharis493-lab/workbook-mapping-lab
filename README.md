@@ -8,6 +8,8 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 - Detection of newly inserted numeric detail lines in configured watch ranges
 - Historical mapping suggestions even when the target workbook row positions move
 - Local Windows exception-review desk with explicit approval and private exports
+- Separate **non-blocking Warnings** tab comparing historical classifications with supporting FS evidence
+- Optional private, reusable cross-workbook advisory checks with review notes
 - **Exact vendor-export preservation**: only approved existing numeric cell values change
 - Detect previously active detailed sheets missing from the current-year vendor export
 - Resolve reviewed detailed fields from captions even when cell rows move
@@ -40,6 +42,6 @@ python -m workbook_mapping_lab.writer --template "C:\private\blank.xlsx" --layou
 
 The output location must be unused. The writer refuses source overwrites, nonempty or formula destination cells, changed anchor labels, invalid/missing fields and modified package contents. It does **not** submit any data to external software.
 
-See [exact vendor export](docs/EXACT_VENDOR_EXPORT.md), [reference benchmark](docs/REFERENCE_BENCHMARK.md), [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), and [privacy policy](PRIVACY.md).
+See [advisory warnings](docs/WARNINGS.md), [exact vendor export](docs/EXACT_VENDOR_EXPORT.md), [reference benchmark](docs/REFERENCE_BENCHMARK.md), [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), and [privacy policy](PRIVACY.md).
 
 Only invented test data is suitable for this repository.
