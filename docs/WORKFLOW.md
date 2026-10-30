@@ -1,13 +1,16 @@
-﻿# Workbook mapping workflow
+# Workbook mapping workflow
 
-1. Read previous-year source spreadsheet and its completed destination template locally.
-2. Suggest mappings using captions, hierarchy, amounts, signs and historical treatment.
-3. Require human approval for ambiguous or changed mappings.
+1. Read previous-year source data and its completed destination spreadsheet **privately**.
+2. Propose mappings using captions, hierarchy, signs, amounts and historical treatment.
+3. Require the reviewer to approve ambiguous or changed mappings.
 4. Apply only approved rules to the current-year source.
-5. Compare against the destination workbook shape and report missing fields.
-6. For spreadsheet compatibility tests, validate anchor labels, empty target cells, formulas, merged cells and sheet visibility.
-7. Later, populate a COPY of the real blank workbook with a dedicated adapter.
-8. Reconcile/re-export and have the operator test the actual application.
+5. Check target cell coordinates and anchor labels in the original blank template.
+6. Validate formulas, existing values, merged cells, worksheet states and section totals.
+7. Write an **unused separate copy** by replacing approved empty numeric cell XML only.
+8. Verify all unmodified workbook package parts are byte-identical after extraction.
+9. Reopen the produced file and recheck populated fields; do not edit the original workbook.
+10. Perform the application's real import in a backed-up **test** record; re-export and compare the affected and unaffected fields.
 
-**No public repo input should include real client data.**
-Passing local simulation does NOT establish compatibility with a proprietary application's importer.
+No automatically generated file is deemed production-ready based solely on an offline simulator pass.
+
+**Privacy:** Client templates, returns, mapping tables, values and reports are private and never belong in the public repository.
