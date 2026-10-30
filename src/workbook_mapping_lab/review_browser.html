@@ -1,47 +1,117 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale">
-<meta name="local-token" content="__LOCAL_SESSION_TOKEN__"><title>Workbook Mapping Lab | Local</title>
-<link rel="stylesheet" href="/app.css"><script defer src="/app.js"></script><script defer src="/zoom.js"></script></head>
-<body><a class="skip" href="#main">Skip to workspace</a>
-<header class="header"><div class="brand"><span class="logo">W</span><div><strong>Workbook Mapping Lab</strong><small>Private financial statement review</small></div></div>
-<div class="zoom-tools" aria-label="Reading controls">
-<button id="smaller" aria-label="Smaller text">A−</button><label for="page-zoom">Text zoom</label>
-<input id="page-zoom" type="range" min="75" max="250" step="5" value="100"><output id="zoom-output">100%</output>
-<button id="bigger" aria-label="Larger text">A+</button><button id="zoom-reset">Reset</button>
-<button id="lens-toggle" aria-pressed="false">Reading lens · Alt M</button>
-<label for="lens-scale">Lens</label><input id="lens-scale" type="range" min="150" max="500" step="25" value="280">
-<output id="lens-output">280%</output><button id="help-zoom">Zoom help</button></div></header>
-<div class="privacy"><span class="dot"></span> Private · This device only <span class="muted">Original Excel exports remain unchanged</span></div>
-<main id="main"><div class="intro"><div><p class="eyebrow">CONTROLLED MAPPING WORKSPACE</p>
-<h1>Review the source. Keep the format.</h1><p class="muted">Extract financial statements, check classifications and populate the original Winman-exported template.</p></div>
-<div class="stat"><small>Mappings needing review</small><strong id="unresolved-count">—</strong><span id="status-mini"></span></div></div>
-<nav class="tabs" aria-label="Workspace"><button class="tab active" data-view="sources">01 Sources</button><button class="tab" data-view="mapping">02 Mapping review</button><button class="tab" data-view="warnings">03 Warnings <b id="warning-count">0</b></button><button class="tab" data-view="build">04 Build checked copy</button></nav>
-<section id="view-sources" class="view"><div class="section-head"><div><h2>Source workbooks</h2><p class="muted">Existing local paths are preloaded from your private session.</p></div><button class="primary" id="extract">Extract &amp; compare</button></div>
-<div class="panel"><div id="source-inputs" class="form-grid"></div><div class="actions"><button id="save-paths">Save paths</button><button id="scan-btn">Scan FS rows</button><button id="resolve-btn">Resolve detailed fields</button></div></div>
-<div class="panel"><h3>Extraction findings</h3><div class="scroll"><table id="findings-table"><thead><tr><th>Finding</th><th>Source</th><th>Explanation</th></tr></thead><tbody></tbody></table></div></div></section>
-<section id="view-mapping" class="view" hidden><div class="section-head"><div><h2>Mapping review</h2><p class="muted">Prior-year mappings are suggestions, not evidence of correctness.</p></div><input id="mapping-search" type="search" placeholder="Search source items" aria-label="Search source items"></div>
-<div class="metrics"><div><small>Extracted</small><strong id="metric-extracted">0</strong></div><div><small>Approved or reused</small><strong id="metric-approved">0</strong></div><div><small>Need review</small><strong id="metric-pending">0</strong></div></div>
-<div class="panel"><div class="scroll"><table id="mapping-table"><thead><tr><th>Status</th><th>Section</th><th>FS item</th><th>Current ₹</th><th>Prior ₹</th><th>Target field</th><th>Risk</th></tr></thead><tbody></tbody></table></div></div>
-<div class="panel"><h3>Selected source: <span id="selected-source">None</span></h3>
-<div class="form-grid compact"><label>Destination<select id="destination"></select></label><label>Portion<input id="portion" value="1"></label><label>Sign<select id="sign"><option value="keep">Keep</option><option value="reverse">Reverse</option></select></label>
-<label class="tick"><input type="checkbox" id="approve-risk"> I reviewed this item’s risk</label></div>
-<div class="actions"><button class="primary" id="approve">Approve selected</button><button id="revoke">Revoke</button></div></div></section>
-<section id="view-warnings" class="view" hidden><div class="section-head"><div><h2>Warnings</h2><p class="muted">Advisory only. Warnings do not change mappings or block generation.</p></div><div class="actions"><button id="warnings-refresh">Re-check</button><button id="warnings-export">Export privately</button></div></div>
-<div class="warning-grid"><div class="panel" id="warning-list"></div><div class="panel">
-<p class="eyebrow">EVIDENCE</p><h3 id="warning-title">Choose a warning</h3>
-<p id="warning-explanation" class="readable muted"></p><div id="warning-evidence"></div><div id="warning-action"></div>
-<label class="wide">Reviewer note<textarea id="warning-note" rows="3"></textarea></label><div class="actions"><button id="warning-reviewed">Mark reviewed</button><button id="warning-reopen">Reopen</button></div>
-</div></div></section>
-<section id="view-build" class="view" hidden><div class="section-head"><div><h2>Build verified copy</h2><p class="muted">This does not import into Winman or overwrite original exports.</p></div></div>
-<div class="panel"><div id="build-inputs" class="form-grid"></div>
-<div class="notice"><strong>Exact-format safeguards</strong><p>Required detailed sheets, amount controls and field approvals must pass. Advisory warnings never block.</p></div>
-<div class="actions"><button id="review-export">Save approved review</button><button class="primary" id="build-copy">Build &amp; verify copy</button></div><p id="build-result" class="muted">No output generated in this browser session.</p></div></section>
-</main><footer>Local-only · Trackpad pinch zoom: spread to enlarge, pinch to reduce · Reading lens: Alt + M</footer>
-<div id="reader-lens" class="lens" hidden aria-hidden="true"><small>READING LENS · <span id="lens-multiplier">280%</span></small><div id="lens-text"></div><small>Hover over a word · Click to pin · Esc to unpin</small></div>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="local-token" content="__LOCAL_SESSION_TOKEN__">
+<meta name="color-scheme" content="light">
+<title>Workbook Mapping Lab · Local workspace</title>
+<link rel="stylesheet" href="/app.css">
+<script defer src="/app.js"></script><script defer src="/zoom.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to workspace</a>
+<header class="header">
+ <div class="brand"><span class="logo" aria-hidden="true">W</span>
+  <div><strong>Workbook Mapping Lab</strong><small>Local accounting workspace</small></div>
+ </div>
+ <div class="header-right">
+  <span class="local-status"><span class="dot" aria-hidden="true"></span> Private · On this device</span>
+  <details class="view-menu" id="view-menu">
+   <summary>View options <span aria-hidden="true">⌄</span></summary>
+   <div class="view-popover">
+    <p class="menu-heading">Reading preferences</p>
+    <p class="menu-hint">Trackpad pinch works directly in Chrome. These controls are optional.</p>
+    <div class="zoom-tools">
+     <div class="control-group"><label for="page-zoom">Text size</label>
+      <div class="inline-controls"><button id="smaller" aria-label="Smaller text">A−</button><input id="page-zoom" type="range" min="75" max="250" step="5" value="100"><output id="zoom-output">100%</output><button id="bigger" aria-label="Larger text">A+</button></div>
+     </div>
+     <div class="control-group"><label for="lens-scale">Reading lens magnification</label>
+      <div class="inline-controls"><input id="lens-scale" type="range" min="150" max="500" step="25" value="280"><output id="lens-output">280%</output><button id="lens-toggle" aria-pressed="false">Lens off</button></div>
+     </div>
+     <div class="inline-controls"><button id="zoom-reset">Reset text size</button><button id="help-zoom">Zoom help</button></div>
+    </div>
+   </div>
+  </details>
+ </div>
+</header>
+<main id="main">
+ <div class="page-intro"><div>
+  <p class="eyebrow">FINANCIAL STATEMENT AUTOMATION</p>
+  <h1>Prepare &amp; review</h1>
+  <p class="muted">Map FS figures to the official Winman export, with every exception visible.</p>
+ </div><div class="progress-summary" aria-live="polite"><strong id="unresolved-count">—</strong><div><span>Items to review</span><small id="status-mini">Load a source to begin</small></div></div></div>
+
+ <nav class="tabs" aria-label="Workflow">
+  <button class="tab active" data-view="sources" aria-current="page"><span class="step-number">01</span> Sources</button>
+  <button class="tab" data-view="mapping"><span class="step-number">02</span> Review mappings</button>
+  <button class="tab" data-view="warnings"><span class="step-number">03</span> Warnings <b id="warning-count" class="counter">0</b></button>
+  <button class="tab" data-view="build"><span class="step-number">04</span> Build copy</button>
+ </nav>
+
+ <section id="view-sources" class="view" aria-labelledby="source-title">
+  <div class="section-head"><div><h2 id="source-title">Choose source files</h2><p class="muted">Start with your current FS and previous-year reference.</p></div><button id="extract" class="primary">Extract &amp; compare <span aria-hidden="true">→</span></button></div>
+  <div class="work-surface">
+   <div id="source-inputs" class="form-grid"></div>
+   <details class="advanced">
+    <summary>More source options <span class="summary-hint">Profiles, mapping rules, private folder</span></summary>
+    <div class="advanced-content"><div id="source-advanced-inputs" class="form-grid"></div></div>
+   </details>
+   <div class="actions"><button id="save-paths">Save paths</button><button id="scan-btn">Find additional FS rows</button><button id="resolve-btn">Resolve Winman detail fields</button></div>
+  </div>
+  <details class="quiet-details" id="findings-panel"><summary>Extraction findings <span class="summary-hint" id="findings-summary">Shown after extraction</span></summary>
+   <div class="table-shell"><table id="findings-table"><thead><tr><th>Finding</th><th>Source</th><th>Explanation</th></tr></thead><tbody><tr><td colspan="3" class="empty">No source scan yet.</td></tr></tbody></table></div>
+  </details>
+ </section>
+
+ <section id="view-mapping" class="view" hidden aria-labelledby="mapping-title">
+  <div class="section-head"><div><h2 id="mapping-title">Review mappings</h2><p class="muted">Approve the classification, not just the number.</p></div><input id="mapping-search" type="search" placeholder="Search FS items" aria-label="Search financial statement rows"></div>
+  <div class="compact-metrics"><span><strong id="metric-extracted">0</strong> extracted</span><span><strong id="metric-approved">0</strong> approved or reused</span><span><strong id="metric-pending">0</strong> need review</span></div>
+  <div class="review-layout">
+   <div class="table-shell mapping-shell"><table id="mapping-table"><thead><tr><th>Item</th><th>Current ₹</th><th>Prior ₹</th><th>Target</th><th>Decision</th></tr></thead><tbody><tr><td colspan="5" class="empty">Extract a source workbook to begin.</td></tr></tbody></table></div>
+   <aside class="decision-panel" aria-label="Mapping decision">
+    <p class="eyebrow">SELECTED ITEM</p><h3 id="selected-source">Choose a row to review</h3>
+    <div class="selected-data" id="selected-risk" aria-live="polite">The row's supporting details and any exceptions will appear here.</div>
+    <label>Destination field<select id="destination"><option value="">Select a source row</option></select></label>
+    <div class="decision-row"><label>Portion<input id="portion" value="1"></label><label>Sign<select id="sign"><option value="keep">Keep</option><option value="reverse">Reverse</option></select></label></div>
+    <label class="tick"><input type="checkbox" id="approve-risk"> I reviewed the highlighted risk</label>
+    <div class="actions"><button id="revoke">Revoke</button><button class="primary" id="approve">Approve selected</button></div>
+   </aside>
+  </div>
+ </section>
+
+ <section id="view-warnings" class="view" hidden aria-labelledby="warning-heading">
+  <div class="section-head"><div><h2 id="warning-heading">Warnings</h2><p class="muted">Helpful checks, never automatic changes to your accounts.</p></div><div class="actions"><button id="warnings-refresh">Re-check evidence</button><button id="warnings-export">Export privately</button></div></div>
+  <div class="warning-grid">
+   <div id="warning-list" class="warning-list"><p class="empty">No warnings loaded. Choose Re-check evidence.</p></div>
+   <article class="warning-detail">
+    <p class="eyebrow">SUPPORTING EVIDENCE</p><h3 id="warning-title">Select a warning</h3>
+    <p id="warning-explanation" class="readable muted">The explanation and source cells will appear here.</p>
+    <div id="warning-evidence"></div><div id="warning-action"></div>
+    <details class="advanced note-box"><summary>Reviewer note &amp; decision</summary><div class="advanced-content">
+     <label>Optional note<textarea id="warning-note" rows="3"></textarea></label>
+     <div class="actions"><button id="warning-reopen">Reopen</button><button id="warning-reviewed">Mark reviewed</button></div>
+    </div></details>
+   </article>
+  </div>
+ </section>
+
+ <section id="view-build" class="view" hidden aria-labelledby="build-heading">
+  <div class="section-head"><div><h2 id="build-heading">Create the checked workbook</h2><p class="muted">An approved copy of the original Excel export; never an invented template.</p></div></div>
+  <div class="work-surface">
+   <div id="build-inputs" class="form-grid"></div>
+   <details class="advanced"><summary>Validation inputs <span class="summary-hint">Reconciliation controls and detail schedules</span></summary><div class="advanced-content"><div id="build-advanced-inputs" class="form-grid"></div></div></details>
+   <p class="safety-note"><strong>Originals are protected.</strong> Missing Winman schedules or unreconciled amounts block the checked copy. Advisory warnings do not.</p>
+   <div class="actions"><button id="review-export">Save mapping review</button><button id="build-copy" class="primary">Build &amp; verify copy</button></div>
+   <p id="build-result" class="muted result-line">No output generated in this session.</p>
+  </div>
+ </section>
+</main>
+<footer>Local accounting tool <span>Use your two-finger Chrome trackpad pinch to zoom. <button id="footer-help" type="button">Zoom help</button></span></footer>
+<div id="reader-lens" class="lens" aria-hidden="true" hidden><small>READING LENS · <span id="lens-multiplier">280%</span></small><div id="lens-text"></div><small>Hover over text · click to pin · Esc to release</small></div>
 <div id="toast" role="status" aria-live="polite"></div>
-<dialog id="help-dialog"><div class="section-head"><h2>Zoom precisely</h2><button id="help-close">Close</button></div>
-<p><strong>Chrome native pinch:</strong> Spread on trackpad for larger view; pinch inward for smaller view. Ctrl plus 0 resets zoom.</p>
-<p><strong>Custom text size:</strong> use the 75–250% slider in the header.</p>
-<p><strong>Any word or number:</strong> activate Reading lens or press Alt + M. Hover over text. Click to pin the large text, press Esc to release. Increase lens zoom up to 500%.</p>
-<p>Use Tab to navigate buttons and form controls. All accounting values remain unchanged by zoom.</p></dialog>
+<dialog id="help-dialog"><div class="section-head"><h2>Zoom like Chrome</h2><button id="help-close">Close</button></div>
+ <p>Use two fingers on your laptop's trackpad: spread them to zoom in and bring them together to zoom out. Chrome handles this gesture directly.</p>
+ <p>Keyboard alternatives: <kbd>Ctrl</kbd> + <kbd>+</kbd> or <kbd>−</kbd>; <kbd>Ctrl</kbd> + <kbd>0</kbd> resets Chrome zoom.</p>
+ <p>The optional text-size control and reading lens are under <strong>View options</strong>. Press <kbd>Alt</kbd> + <kbd>M</kbd> to toggle the lens.</p>
+</dialog>
 </body></html>
