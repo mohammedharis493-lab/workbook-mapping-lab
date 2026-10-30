@@ -19,6 +19,7 @@ from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
+from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
 
 
 class ReviewDesk(tk.Tk):
@@ -34,7 +35,7 @@ class ReviewDesk(tk.Tk):
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
-                "folder","source_controls","output_controls","template","output"
+                "folder","source_controls","output_controls","template","output","detail_routes"
             )
         }
         self.section=tk.StringVar(value="BS-A")
@@ -62,7 +63,7 @@ class ReviewDesk(tk.Tk):
             elif kind=="save":
                 p=filedialog.asksaveasfilename(
                     defaultextension=".xlsx",filetypes=[("Excel workbook","*.xlsx")])
-            elif key in ("layout","prior_rules","source_controls","output_controls"):
+            elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes"):
                 p=filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
             elif key=="profile":
                 p=filedialog.askopenfilename(filetypes=[("Profile JSON","*.json")])
@@ -100,6 +101,7 @@ class ReviewDesk(tk.Tk):
             ("Reviewed extraction profile (.json)","profile"),
             ("Target-field layout (.csv)","layout"),
             ("Existing approved rules (optional, .csv)","prior_rules"),
+            ("Approved detailed target routes (.csv)","detail_routes"),
             ("Previous-year populated destination (optional)","previous_target"),
             ("Private working folder","folder"),
         ]):
@@ -109,6 +111,7 @@ class ReviewDesk(tk.Tk):
         ttk.Button(row,text="Extract profile rows",command=self.load_selected).pack(side="left",padx=5)
         ttk.Button(row,text="Find additional rows",command=self.open_scanner).pack(side="left",padx=5)
         ttk.Button(row,text="View extraction findings",command=self.show_findings).pack(side="left",padx=5)
+        ttk.Button(row,text="Resolve detailed fields",command=self.resolve_detail_fields).pack(side="left",padx=5)
         ttk.Button(row,text="Save updated profile privately",command=self.save_profile).pack(side="left",padx=5)
         ttk.Label(setup,text=("Use the scan window to add new items. Never include totals and their "
                               "underlying detail in the same section.")).pack(anchor="w",padx=20)
@@ -210,6 +213,37 @@ class ReviewDesk(tk.Tk):
             suggestion_count=sum(1 for x in self.review.entries.values() if x["review_status"]=="SUGGESTED")
             self.status.set(f"{len(rows)} details; {suggestion_count} suggested mappings; "
                             f"{len(self.review.unresolved())} need decisions; {len(issues)} findings.")
+        except Exception as err:
+            self._show_error(err)
+
+    def resolve_detail_fields(self):
+        """Refresh field positions only from the original exported workbook."""
+        try:
+            template=self._file("template")
+            private=require_private_directory(self._file("folder"))
+            if self._file("previous_target",False):
+                contract=detail_coverage(self._file("previous_target"),template)
+                if contract["status"]!="READY_FOR_REVIEW":
+                    missing=", ".join(x["sheet"] for x in contract["missing_active_detail_sheets"])
+                    raise ValueError("The current vendor export is missing active detailed schedules: "+missing)
+            routes=load_csv(self._file("detail_routes"),("field_id","section","sheet","caption"))
+            original=load_csv(self._file("layout"),
+                ("field_id","section","sheet","cell","anchor_cell","anchor_text"))
+            result=resolve_layout(template,routes)
+            if result["status"]!="READY":
+                missing="; ".join(x["field_id"]+": "+x["code"] for x in result["exceptions"])
+                raise ValueError("Cannot safely resolve vendor detail cells: "+missing)
+            merged=merge_approved_routes(original,result)
+            from datetime import datetime
+            path=private/("resolved_target_layout_"+datetime.now().strftime("%Y%m%d_%H%M%S_%f")+".csv")
+            write_private_layout(merged,str(path))
+            self.variables["layout"].set(str(path))
+            self.review=None
+            self.latest_saved=None
+            self.status.set(f"Resolved {len(result['layout'])} exact detailed destinations. Review all mappings again before building.")
+            messagebox.showinfo("Vendor template resolved",
+                "All requested detailed destinations were found in the original export. "+
+                "A private reviewed layout was created. No vendor file was modified.",parent=self)
         except Exception as err:
             self._show_error(err)
 
