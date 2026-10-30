@@ -44,12 +44,11 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                           *, current_fs: str | None = None,
                           fs_sheet: str = "New Disclosure",
                           itr_sheet: str = "Creditors") -> list[dict]:
-    """Compare PY 4-bucket FS ageing to corresponding PY ITR >1-year detail.
+    """Compare four-bucket FS ageing with the ACTUAL two distinct ITR rows.
 
-    This is a *classification* check: overall creditors can agree while the
-    age split is wrong. Does not assume there is an importable <1-year child
-    on the vendor form. The exact grouped heading is verified before relying
-    on the historical amount.
+    Winman export has row A4 = over-one-year creditors, A5 = Others.
+    NEVER interpret B5 (Others) as the amount under A4. A blank B4/B5 is
+    interpreted as zero only if the other row/total provides numeric evidence.
 
     The default cell layout applies only when identified as the corresponding
     source schedules. Other entities can supply a different detection profile.
@@ -75,7 +74,9 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
         caption=fs.cell(fs_sheet,"A5")["value"].casefold()
         header=fs.cell(fs_sheet,"C4")["value"].casefold()
         older_heading=itr.cell(itr_sheet,"A4")["value"].casefold()
-        if "msme" not in caption or "less than 1" not in header or "more than 1 year" not in older_heading:
+        younger_heading=itr.cell(itr_sheet,"A5")["value"].strip().casefold()
+        if ("msme" not in caption or "less than 1" not in header
+                or "more than 1 year" not in older_heading or younger_heading != "others"):
             return [advisory(
                 "HISTORICAL_AGEING_LAYOUT_UNRECOGNISED",
                 "Previous-year ageing classification requires manual review",
@@ -86,16 +87,34 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
         bucket_cells=("C5","D5","E5","F5")
         components=[value(fs.cell(fs_sheet,cell)["value"]) for cell in bucket_cells]
         fs_total=value(fs.cell(fs_sheet,"G5")["value"])
-        reported_older=value(itr.cell(itr_sheet,"B5")["value"])
+        older_raw=itr.cell(itr_sheet,"B4")["value"]
+        younger_raw=itr.cell(itr_sheet,"B5")["value"]
+        reported_older=value(older_raw)
+        reported_younger=value(younger_raw)
         prior_total=value(itr.cell(itr_sheet,"B6")["value"])
-        if any(a is None for a in components) or fs_total is None or reported_older is None:
+        if ((any(a is None for a in components) or fs_total is None)
+                or (reported_older is None and reported_younger is None)):
             return [advisory(
                 "HISTORICAL_AGEING_INCOMPLETE",
                 "Previous-year age comparison lacks numeric evidence",
-                "A necessary amount in the ageing note or the return is blank or nonnumeric.",
-                "Verify the affected cells in the original workbooks.",
+                "Both creditor detail amounts are blank or FS ageing amounts are unavailable.",
+                "Verify the individual amount cells in the original Winman export.",
                 severity="Info",
             )]
+        if reported_older is None:
+            if str(older_raw).strip():
+                return [advisory("HISTORICAL_AGEING_INVALID_AMOUNT",
+                                 "Older creditor detail is not a valid amount",
+                                 "The B4 amount is nonnumeric.",
+                                 "Inspect the original export.",severity="Info")]
+            reported_older=Decimal("0")
+        if reported_younger is None:
+            if str(younger_raw).strip():
+                return [advisory("HISTORICAL_AGEING_INVALID_AMOUNT",
+                                 "Other creditor detail is not a valid amount",
+                                 "The B5 amount is nonnumeric.",
+                                 "Inspect the original export.",severity="Info")]
+            reported_younger=Decimal("0")
         under_one,one_two,two_three,over_three=components
         over_one=one_two+two_three+over_three
         references=[
@@ -106,9 +125,12 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
              "amount":money(over_one)},
             {"source":"Previous-year FS ageing", "sheet":fs_sheet,
              "cell":"G5", "description":"Overall creditor balance", "amount":money(fs_total)},
-            {"source":"Previous-year completed return", "sheet":itr_sheet,
-             "cell":"B5", "description":"Reported under older-creditor heading",
+            {"source":"Previous-year Winman export", "sheet":itr_sheet,
+             "cell":"B4", "description":"Reported on over-one-year creditor row",
              "amount":money(reported_older)},
+            {"source":"Previous-year Winman export", "sheet":itr_sheet,
+             "cell":"B5", "description":"Reported on Others row",
+             "amount":money(reported_younger)},
         ]
         if sum(components,Decimal("0"))!=fs_total:
             notes.append(advisory(
@@ -130,15 +152,16 @@ def check_creditor_ageing(prior_fs: str, prior_itr: str,
                                           "amount":money(prior_total),"description":"Reported detail total"}],
                 difference=money(prior_total-fs_total),
             ))
-        if reported_older != over_one:
+        if reported_older != over_one or reported_younger != under_one:
             notes.append(advisory(
                 "PRIOR_CREDITOR_AGE_CLASSIFICATION",
-                "Previous-year trade creditors may have been aged incorrectly",
-                ("The prior return reports "+money(reported_older)+
-                 " under an over-one-year heading, but the PY FS ageing note "
-                 "supports "+money(over_one)+" over one year and "+
-                 money(under_one)+" under one year. The total may still agree."),
-                "Review the previous-year classification and invoice ageing. Use the current-year reviewed age split rather than blindly repeating the earlier mapping.",
+                "Previous-year creditor age classification differs from FS",
+                ("The PY Winman export reports "+money(reported_older)+
+                 " in its >1-year row (B4) and "+money(reported_younger)+
+                 " in Others (B5). The FS ageing supports "+money(over_one)+
+                 " over one year and "+money(under_one)+
+                 " less than one year. Total agreement alone cannot resolve this."),
+                "Check original invoice dates and the meaning of Others in this year of Winman; do not automatically repeat or reverse the historical classification.",
                 evidence=references,
                 difference=money(reported_older-over_one),
             ))

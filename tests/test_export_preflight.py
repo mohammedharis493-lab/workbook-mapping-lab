@@ -51,6 +51,19 @@ class ExportPreflightTests(unittest.TestCase):
         self.assertFalse(result["missing_sheets"])
         self.assertEqual(self.current.read_bytes(),before)
 
+    def test_recover_historical_destination_without_creating_missing_sheet(self):
+        make_vendor(self.previous)
+        make_vendor(self.current,include_details=False)
+        before=self.current.read_bytes()
+        result=preflight_export(str(self.current),str(self.previous),str(self.routes))
+        self.assertEqual(result["status"],"INCOMPLETE_OFFICIAL_EXPORT")
+        self.assertEqual(len(result["historical_field_locations"]),1)
+        found=result["historical_field_locations"][0]
+        self.assertEqual(found["status"],"HISTORICAL_LABEL_FOUND")
+        self.assertEqual(found["potential_amount_cell"],"B11")
+        self.assertFalse(found["historical_values_reused"])
+        self.assertEqual(self.current.read_bytes(),before)
+
     def test_missing_evidence_is_not_marked_ready(self):
         make_vendor(self.current)
         result=preflight_export(str(self.current))
