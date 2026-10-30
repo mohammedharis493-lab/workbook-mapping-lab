@@ -19,7 +19,7 @@ from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
-from .advisories import check_advisories,advisory
+from .advisories import check_advisories,advisory,evaluate_evidence_rules,load_evidence_rules
 from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
 
 
@@ -38,7 +38,7 @@ class ReviewDesk(tk.Tk):
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
-                "folder","source_controls","output_controls","template","output","detail_routes","companion_details"
+                "folder","source_controls","output_controls","template","output","detail_routes","companion_details","advisory_rules"
             )
         }
         self.section=tk.StringVar(value="BS-A")
@@ -66,7 +66,7 @@ class ReviewDesk(tk.Tk):
             elif kind=="save":
                 p=filedialog.asksaveasfilename(
                     defaultextension=".xlsx",filetypes=[("Excel workbook","*.xlsx")])
-            elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes","companion_details"):
+            elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes","companion_details","advisory_rules"):
                 p=filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
             elif key=="profile":
                 p=filedialog.askopenfilename(filetypes=[("Profile JSON","*.json")])
@@ -108,6 +108,7 @@ class ReviewDesk(tk.Tk):
             ("Existing approved rules (optional, .csv)","prior_rules"),
             ("Approved detailed target routes (.csv)","detail_routes"),
             ("Previous-year populated destination (optional)","previous_target"),
+            ("Additional advisory checks (optional, .json)","advisory_rules"),
             ("Private working folder","folder"),
         ]):
             self._path_row(top,label,key,"dir" if key=="folder" else "file",i)
@@ -230,6 +231,13 @@ class ReviewDesk(tk.Tk):
         current=self._file("source",False)
         try:
             self.advisory_items=check_advisories(previous,prior_irs,current or None)
+            if self._file("advisory_rules",False):
+                rule_checks=load_evidence_rules(self._file("advisory_rules"))
+                self.advisory_items.extend(evaluate_evidence_rules({
+                    "previous_fs":previous,
+                    "previous_return":prior_irs,
+                    "current_fs":current,
+                },rule_checks))
         except (ValueError,KeyError,OSError) as err:
             self.advisory_items=[advisory(
                 "EVIDENCE_CHECK_INCOMPLETE",
