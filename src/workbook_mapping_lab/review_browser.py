@@ -28,11 +28,13 @@ from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
+from .manual_benchmark import compare_completed_return
 
 CONFIG_KEYS = frozenset((
     "source", "previous", "profile", "layout", "prior_rules",
     "previous_target", "folder", "source_controls", "output_controls",
     "template", "output", "detail_routes", "companion_details", "advisory_rules",
+    "benchmark_generated", "completed_reference", "benchmark_contract",
 ))
 STATIC = {
     "/": ("review_browser.html", "text/html; charset=utf-8"),
@@ -57,6 +59,7 @@ class Workspace:
         self.warnings: list[dict] = []
         self.decisions: dict[str, dict] = {}
         self.latest_saved: dict | None = None
+        self.latest_benchmark: dict | None = None
         self.profile = None
         self.lock = threading.RLock()
 
@@ -78,6 +81,7 @@ class Workspace:
             "issues": self.issues,
             "unresolved": self.review.unresolved() if self.review else [],
             "latest_saved": self.latest_saved,
+            "latest_benchmark": self.latest_benchmark,
         }
 
     @staticmethod
@@ -101,6 +105,7 @@ class Workspace:
             self.issues = []
         if changed:
             self.latest_saved = None
+            self.latest_benchmark = None
         return self.data()
 
     def refresh_warnings(self) -> dict:
@@ -249,6 +254,25 @@ class Workspace:
         with WorkbookSnapshot(self.file("source")) as w:
             return {"rows": scan_sheet(w, sheet, start_row=first, end_row=last)}
 
+    def benchmark_completed(self) -> dict:
+        """Independent reference check with no workbook writes or approvals."""
+        selected = self.file("benchmark_generated", False) or self.file("output")
+        reference = self.file("completed_reference")
+        contract = self.file("benchmark_contract")
+        result = compare_completed_return(selected, reference, contract)
+        report = self._new_file("completed_return_benchmark_PRIVATE_", ".json")
+        if report.exists():
+            raise FileExistsError("Benchmark report already exists")
+        report.write_text(json.dumps(result,indent=2),encoding="utf-8")
+        self.latest_benchmark = {
+            "status":result["status"], "contract_fields":result["contract_fields"],
+            "fully_matched":result["fully_matched"],
+            "review_count":result["require_review"],
+            "unavailable_targets":result["generated_target_unavailable"],
+            "details":result["details"], "private_report":str(report),
+        }
+        return self.data()
+
     def build(self) -> dict:
         if not self.review or self.review.unresolved():
             raise ValueError("All source classifications require approval before building")
@@ -284,6 +308,7 @@ def create_server(workspace: Workspace, *, port: int = 0):
         "/api/revoke": workspace.revoke,
         "/api/save-review": lambda _: workspace.save_review(),
         "/api/build": lambda _: workspace.build(),
+        "/api/benchmark-completed": lambda _: workspace.benchmark_completed(),
         "/api/resolve-details": lambda _: workspace.resolve_details(),
         "/api/scan": workspace.scan,
     }
