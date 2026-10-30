@@ -35,7 +35,7 @@ class ReviewDesk(tk.Tk):
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
-                "folder","source_controls","output_controls","template","output","detail_routes"
+                "folder","source_controls","output_controls","template","output","detail_routes","companion_details"
             )
         }
         self.section=tk.StringVar(value="BS-A")
@@ -63,7 +63,7 @@ class ReviewDesk(tk.Tk):
             elif kind=="save":
                 p=filedialog.asksaveasfilename(
                     defaultextension=".xlsx",filetypes=[("Excel workbook","*.xlsx")])
-            elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes"):
+            elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes","companion_details"):
                 p=filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
             elif key=="profile":
                 p=filedialog.askopenfilename(filetypes=[("Profile JSON","*.json")])
@@ -158,6 +158,7 @@ class ReviewDesk(tk.Tk):
             ("Original blank destination template","template","file"),
             ("Independent source section totals","source_controls","file"),
             ("Independent expected output totals","output_controls","file"),
+            ("Approved parent-child detail amounts (optional)","companion_details","file"),
             ("New checked-copy output filename","output","save"),
         ]):
             self._path_row(task,label,key,kind,i)
@@ -463,6 +464,7 @@ class ReviewDesk(tk.Tk):
                 output_controls=self._file("output_controls"),
                 output=self._file("output"),
                 previous_export=self._file("previous_target",False) or None,
+                companion_details=self._file("companion_details",False) or None,
                 exception_report=str(require_private_directory(self._file("folder"))/
                                      "build_result_private.json"),
                 rounding="whole_rupees")
