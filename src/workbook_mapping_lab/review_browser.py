@@ -36,6 +36,7 @@ STATIC = {
     "/": ("review_browser.html", "text/html; charset=utf-8"),
     "/app.css": ("review_browser.css", "text/css; charset=utf-8"),
     "/app.js": ("review_browser.js", "text/javascript; charset=utf-8"),
+    "/zoom.js": ("review_browser_zoom.js", "text/javascript; charset=utf-8"),
 }
 
 
@@ -147,12 +148,8 @@ class Workspace:
             proposals, prior_issues = propose_mappings(
                 rows, self.file("previous_target"), fields)
             # Distinguish historical suggestions from structural blockers.
-            if prior_issues:
-                issues.append({
-                    "issue": "HISTORICAL_FIELD_SUGGESTIONS_INCOMPLETE",
-                    "source_id": "",
-                    "detail": str(len(prior_issues)) + " prior destinations need review",
-                })
+            # Historical lookup misses are optional hints, not structural blockers.
+            # Proposed mappings still require explicit human confirmation.
         self.profile = profile
         self.issues = issues
         self.review = ReviewSession(rows, issues, fields, prior,
