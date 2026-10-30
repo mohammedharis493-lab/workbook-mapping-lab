@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
+import subprocess
 import secrets
 import socket
 import threading
@@ -374,6 +376,28 @@ def create_server(workspace: Workspace, *, port: int = 0):
     return server
 
 
+
+def open_local_chrome(url: str) -> str:
+    """Use installed Chrome when available; fall back to the system browser."""
+    candidates = []
+    for base in (
+        os.environ.get("PROGRAMFILES", ""),
+        os.environ.get("PROGRAMFILES(X86)", ""),
+        os.environ.get("LOCALAPPDATA", ""),
+    ):
+        if base:
+            candidates.append(Path(base) / "Google" / "Chrome" /
+                              "Application" / "chrome.exe")
+    for executable in candidates:
+        if executable.is_file():
+            subprocess.Popen([str(executable), "--new-tab", url],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, close_fds=True)
+            return "Chrome"
+    webbrowser.open(url)
+    return "Default browser"
+
+
 def main():
     parser = argparse.ArgumentParser(description="Private local browser UI for reviewed workbook mappings")
     parser.add_argument("--session", help="Private local paths JSON")
@@ -387,7 +411,7 @@ def main():
     url = f"http://127.0.0.1:{server.server_port}/"
     print("Workbook Mapping Lab is running locally:", url, flush=True)
     if not args.no_browser:
-        webbrowser.open(url)
+        open_local_chrome(url)
     try:
         server.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
