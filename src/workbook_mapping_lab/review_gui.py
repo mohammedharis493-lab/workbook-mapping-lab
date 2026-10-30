@@ -19,6 +19,7 @@ from .pipeline import controlled_build
 from .review import ReviewSession, require_private_directory
 from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
+from .advisories import check_advisories,advisory
 from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
 
 
@@ -32,6 +33,8 @@ class ReviewDesk(tk.Tk):
         self.review = None
         self.latest_saved = None
         self.extraction_issues = []
+        self.advisory_items = []
+        self.advisory_decisions = {}
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
@@ -87,10 +90,12 @@ class ReviewDesk(tk.Tk):
         notebook.pack(fill="both",expand=True,padx=12,pady=4)
         setup=ttk.Frame(notebook)
         review=ttk.Frame(notebook)
+        warnings_tab=ttk.Frame(notebook)
         build=ttk.Frame(notebook)
         notebook.add(setup,text=" 1  Sources ")
         notebook.add(review,text=" 2  Review mappings ")
-        notebook.add(build,text=" 3  Build checked copy ")
+        notebook.add(warnings_tab,text=" 3  Warnings (advisory) ")
+        notebook.add(build,text=" 4  Build checked copy ")
 
         top=ttk.LabelFrame(setup,text="Local source files")
         top.pack(fill="x",**padding)
@@ -150,6 +155,39 @@ class ReviewDesk(tk.Tk):
         actions.columnconfigure(1,weight=1)
         ttk.Button(review,text="Export private source + approved rules + exception report",
                    command=self.export_review).pack(anchor="e",padx=14,pady=8)
+
+        warning_heading=ttk.Frame(warnings_tab)
+        warning_heading.pack(fill="x",padx=12,pady=10)
+        ttk.Label(warning_heading,text="Independent classification warnings",
+                  font=("Segoe UI",13,"bold")).pack(anchor="w")
+        ttk.Label(warning_heading,text="Warnings are optional advice: they never change figures or prevent a build. "
+                  "Strict structural and reconciliation checks remain separate.").pack(anchor="w",pady=4)
+        cols_warning=("severity","period","title","difference","decision")
+        warning_frame=ttk.Frame(warnings_tab)
+        warning_frame.pack(fill="both",expand=True,padx=12,pady=4)
+        self.warning_table=ttk.Treeview(warning_frame,columns=cols_warning,
+                                        show="headings",selectmode="browse",height=8)
+        for key,width in (("severity",85),("period",110),("title",580),
+                          ("difference",120),("decision",140)):
+            self.warning_table.heading(key,text=key.title())
+            self.warning_table.column(key,width=width,stretch=key=="title")
+        self.warning_table.pack(fill="both",expand=True)
+        self.warning_table.bind("<<TreeviewSelect>>",lambda e:self._warning_selected())
+        ttk.Label(warnings_tab,text="Evidence and suggested next step").pack(anchor="w",padx=14,pady=4)
+        self.warning_details=tk.Text(warnings_tab,height=9,wrap="word",
+                                     font=("Segoe UI",10),state="disabled")
+        self.warning_details.pack(fill="x",padx=12)
+        notes_frame=ttk.Frame(warnings_tab)
+        notes_frame.pack(fill="x",padx=12,pady=8)
+        ttk.Label(notes_frame,text="Optional reviewer note").pack(side="left",padx=4)
+        self.warning_note=tk.StringVar()
+        ttk.Entry(notes_frame,textvariable=self.warning_note,width=95).pack(side="left",fill="x",expand=True,padx=4)
+        actions_warning=ttk.Frame(warnings_tab)
+        actions_warning.pack(fill="x",padx=12,pady=8)
+        ttk.Button(actions_warning,text="Re-check evidence",command=self.refresh_warnings).pack(side="left",padx=4)
+        ttk.Button(actions_warning,text="Mark reviewed (no changes)",command=self.acknowledge_warning).pack(side="left",padx=4)
+        ttk.Button(actions_warning,text="Reopen warning",command=self.reopen_warning).pack(side="left",padx=4)
+        ttk.Button(actions_warning,text="Export warnings privately",command=self.save_warnings).pack(side="right",padx=4)
 
         task=ttk.LabelFrame(build,text="Only after every extracted item is reviewed")
         task.pack(fill="x",padx=10,pady=12)
@@ -211,6 +249,7 @@ class ReviewDesk(tk.Tk):
             self.review=ReviewSession(rows,issues,fields,prior,suggestions=proposals)
             self.latest_saved=None
             self._draw_rows()
+            self.refresh_warnings()
             suggestion_count=sum(1 for x in self.review.entries.values() if x["review_status"]=="SUGGESTED")
             self.status.set(f"{len(rows)} details; {suggestion_count} suggested mappings; "
                             f"{len(self.review.unresolved())} need decisions; {len(issues)} findings.")
