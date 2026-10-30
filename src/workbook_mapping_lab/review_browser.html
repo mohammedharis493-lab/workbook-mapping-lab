@@ -104,6 +104,18 @@
    <p class="safety-note"><strong>Originals are protected.</strong> Missing Winman schedules or unreconciled amounts block the checked copy. Advisory warnings do not.</p>
    <div class="actions"><button id="review-export">Save mapping review</button><button id="build-copy" class="primary">Build &amp; verify copy</button></div>
    <p id="build-result" class="muted result-line">No output generated in this session.</p>
+   <details class="advanced" id="benchmark-section">
+    <summary>Compare with completed ITR <span class="summary-hint">Independent, read-only benchmark</span></summary>
+    <div class="advanced-content">
+     <p class="muted">Use a separately completed reference return and an approved private comparison contract. Matching totals alone are not sufficient.</p>
+     <div id="benchmark-inputs" class="form-grid"></div>
+     <div class="actions"><button id="benchmark-run">Compare fields</button></div>
+     <p id="benchmark-summary" class="result-line muted">No comparison run.</p>
+     <div class="table-shell benchmark-shell">
+      <table id="benchmark-table"><thead><tr><th>Field</th><th>FS expected</th><th>Generated</th><th>Completed ITR</th><th>Result</th></tr></thead><tbody><tr><td colspan="5" class="empty">Run comparison to see results.</td></tr></tbody></table>
+     </div>
+    </div>
+   </details>
   </div>
  </section>
 </main>
