@@ -41,7 +41,7 @@ class BrowserTests(unittest.TestCase):
     def token(self):
         code,data,_=self.call("/")
         self.assertEqual(code,200)
-        self.assertIn(b"Private financial",data)
+        self.assertIn(b"Local accounting workspace",data)
         match=re.search(rb'<meta name="local-token" content="([^"]+)"',data)
         self.assertIsNotNone(match)
         return match.group(1).decode()
