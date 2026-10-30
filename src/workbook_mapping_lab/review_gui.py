@@ -254,7 +254,8 @@ class ReviewDesk(tk.Tk):
             if f.exists():
                 raise FileExistsError("Profile already exists; choose a new private folder")
             f.write_text(json.dumps(self.profile,indent=2),encoding="utf-8")
-            self.status.set("Saved profile to private folder.")
+            self.variables["profile"].set(str(f))
+            self.status.set("Saved profile privately. Click Extract profile rows to review the added items.")
         except Exception as err:
             self._show_error(err)
 
@@ -348,8 +349,10 @@ class ReviewDesk(tk.Tk):
         try:
             if not self.review:
                 raise ValueError("Read profile rows first")
+            from datetime import datetime
+            base_prefix="local_review_"+datetime.now().strftime("%Y%m%d_%H%M%S")
             self.latest_saved=self.review.save_review(self._file("folder"),
-                prefix="local_review")
+                prefix=base_prefix)
             if self.latest_saved["status"]!="PASS":
                 self.status.set("Review exported privately, but BUILD BLOCKED: outstanding exceptions.")
                 messagebox.showwarning("Outstanding decisions",
