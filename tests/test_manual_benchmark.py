@@ -108,6 +108,39 @@ class ManualBenchmarkTests(unittest.TestCase):
         result=compare_completed_return(str(self.gen),str(self.ref),str(self.rules))
         self.assertIn("GENERATED_FIELD_LABEL_MISSING",result["details"][0]["checks"])
 
+    def test_explicit_approved_cell_disambiguates_repeated_captions(self):
+        native(self.ref,["Part A-BS"],{"Part A-BS":{
+            "A12":"Other","E12":300,
+            "A14":"Other","E14":100,
+            "A13":"Trade creditors due over 1 year","E13":100}})
+        self.rows[0]=("LOAN","300","Balance Sheet","Borrowings","B",
+             "Part A-BS","Other","E")
+        self.save()
+        # The privately approved A12 anchor must prove the exact row.
+        with self.rules.open("r",encoding="utf-8") as fh:
+            original=fh.read()
+        import csv
+        with self.rules.open("r",encoding="utf-8",newline="") as f:
+            rows=list(csv.DictReader(f))
+        rows[0]["manual_label_cell"]="A12"
+        rows[1]["manual_label_cell"]="A13"
+        with self.rules.open("w",encoding="utf-8",newline="") as f:
+            writer=csv.DictWriter(f,fieldnames=list(rows[0]))
+            writer.writeheader();writer.writerows(rows)
+        result=compare_completed_return(str(self.gen),str(self.ref),str(self.rules))
+        self.assertEqual(result["fully_matched"],2)
+
+    def test_approved_anchor_caption_change_is_not_silently_accepted(self):
+        import csv
+        with self.rules.open("r",encoding="utf-8",newline="") as f:
+            rows=list(csv.DictReader(f))
+        rows[0]["manual_label_cell"]="A13"
+        with self.rules.open("w",encoding="utf-8",newline="") as f:
+            writer=csv.DictWriter(f,fieldnames=list(rows[0]))
+            writer.writeheader();writer.writerows(rows)
+        result=compare_completed_return(str(self.gen),str(self.ref),str(self.rules))
+        self.assertIn("MANUAL_FIELD_APPROVED_ANCHOR_CHANGED",result["details"][0]["checks"])
+
     def test_duplicate_field_ids_block(self):
         self.rows[1]=("LOAN","100","Balance Sheet","Trade payables","B",
              "Part A-BS","Trade creditors due over 1 year","E")
