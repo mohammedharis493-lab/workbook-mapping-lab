@@ -36,11 +36,12 @@ def normal(label: str) -> str:
 
 
 def find_field(book: WorkbookSnapshot, sheet: str, caption: str, value_column: str,
-               *, label_column: str = "A", anchor_cell: str = "") -> dict:
+               *, label_column: str = "A", anchor_cell: str = "",
+               allow_hidden_reference: bool = False) -> dict:
     """Match one specific label and one numeric slot; never guess a row."""
     if sheet not in book.sheets:
         return {"state": "MISSING_SHEET", "sheet": sheet}
-    if book.sheets[sheet]["state"] != "visible":
+    if book.sheets[sheet]["state"] != "visible" and not (allow_hidden_reference and anchor_cell):
         return {"state": "HIDDEN_SHEET", "sheet": sheet}
     target = normal(caption)
     matches = []
@@ -113,7 +114,8 @@ def compare_completed_return(
             gen_info = find_field(gen, rule["generated_sheet"], rule["generated_label"], g_col,
                                   anchor_cell=rule.get("generated_label_cell",""))
             man_info = find_field(manual, rule["manual_sheet"], rule["manual_label"], m_col,
-                                  anchor_cell=rule.get("manual_label_cell",""))
+                                  anchor_cell=rule.get("manual_label_cell",""),
+                                  allow_hidden_reference=True)
             statuses = []
             if gen_info["state"] != "FOUND":
                 statuses.append("GENERATED_FIELD_" + gen_info["state"])
