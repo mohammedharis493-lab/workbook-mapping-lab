@@ -136,6 +136,29 @@ exceeds the configured tolerance. Missing evidence is reported as **Info**
 rather than silently treated as a match. A check must be configured and
 approved for the actual form/assessment year.
 
+### Per-cell provenance and period safety (M4.3a)
+
+For an additional reviewer-configured comparison, the warning now lists **each**
+numeric source cell separately, its source worksheet and workbook role, the
+recorded target cell, the source and target financial periods, and the exact
+nonnegative tolerance. `difference` is defined as **target minus sum of source
+cells**; a warning is emitted only when `abs(difference) > tolerance`. No unit
+conversion, scaling or applicability determination is inferred.
+
+`source_kind` and `target_kind` determine the period label (`Previous year`,
+`Current year`, or `Previous year to Current year` / the reverse). The optional
+`period` property must match that derived label, to avoid a misleading review
+of data from different periods. If a workbook, sheet or amount is missing, the
+warning stays **Info / unverified** and retains the expected, *unverified*
+source and target sheet/cell coordinates and tolerance—never a presumed zero.
+
+These checks remain opt-in rules maintained privately for the actual entity,
+ITR form and AY. Synthetic ITR-3/ITR-6 layouts in regression tests are not
+claims about vendor layout or a shared set of applicable fields. Because the
+finding's provenance and tolerance are part of its fingerprint, older review
+journals may require fresh review after updating the app; no earlier
+acknowledgement is silently transferred.
+
 ## Privacy and limitations
 
 - All source workbooks and reports remain on the user's computer.
