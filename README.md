@@ -4,6 +4,10 @@ Local-first research prototype for mapping previous-year spreadsheet classificat
 
 ## Implemented
 
+- Read-only financial-statement extraction using reviewed XLSX profiles
+- Detection of newly inserted numeric detail lines in configured watch ranges
+- Historical mapping suggestions even when the target workbook row positions move
+- Local Windows exception-review desk with explicit approval and private exports
 - Previous-year mapping discovery and accountant-approved mapping application
 - Exception reports for missing, conflicting and new source items
 - Read-only workbook structure simulator and virtual import/re-export
@@ -32,6 +36,6 @@ python -m workbook_mapping_lab.writer --template "C:\private\blank.xlsx" --layou
 
 The output location must be unused. The writer refuses source overwrites, nonempty or formula destination cells, changed anchor labels, invalid/missing fields and modified package contents. It does **not** submit any data to external software.
 
-See [offline simulator](docs/OFFLINE_SIMULATOR.md), [workflow](docs/WORKFLOW.md), and [privacy policy](PRIVACY.md).
+See [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), [workflow](docs/WORKFLOW.md), and [privacy policy](PRIVACY.md).
 
 Only invented test data is suitable for this repository.
