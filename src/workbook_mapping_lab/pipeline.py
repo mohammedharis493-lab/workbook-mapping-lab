@@ -32,6 +32,7 @@ def controlled_build(
     source_controls: str, output_controls: str, output: str,
     exception_report: str, rounding: str = "exact",
     previous_export: str | None = None,
+    companion_details: str | None = None,
 ) -> dict:
     """Create the final workbook only after all mapping and control checks pass.
 
