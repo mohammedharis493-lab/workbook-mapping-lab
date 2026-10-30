@@ -118,6 +118,7 @@ class WorkbookSnapshot:
                 for t in root.findall(".//" + M + "mergeCells/" + M + "mergeCell")
             ]
             self.sheets[name] = {
+                "part_name": location,
                 "state": el.get("state", "visible"),
                 "cells": cells,
                 "merges": merges,
