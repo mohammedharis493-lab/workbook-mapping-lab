@@ -59,6 +59,23 @@ class BrowserTests(unittest.TestCase):
         self.assertIn(b'id="warning-list"',html)
         self.assertIn(b'id="reader-lens"',html)
 
+    def test_progressive_disclosure_and_zoom_accessibility(self):
+        code,html,_=self.call("/")
+        self.assertEqual(code,200)
+        for marker in (
+            b'id="source-advanced-inputs"',b'id="build-advanced-inputs"',
+            b'id="build-gate-status"',b'id="view-menu"',b'id="reader-lens"',
+            b'id="mapping-table"',b'id="warning-list"'
+        ):
+            self.assertIn(marker,html)
+        status,css,_=self.call("/app.css")
+        self.assertEqual(status,200)
+        self.assertIn(b'prefers-reduced-motion:reduce',css)
+        self.assertIn(b'@media(max-width:850px)',css)
+        _,zoom,_=self.call("/zoom.js")
+        self.assertNotIn(b'addEventListener(\'wheel\'',zoom)
+        self.assertNotIn(b'addEventListener(\'touchmove\'',zoom)
+
     def test_private_api_requires_token(self):
         self.assertEqual(self.call("/api/state")[0],403)
         self.assertEqual(self.call("/api/config","POST",{"source":"x"})[0],403)
