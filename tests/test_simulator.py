@@ -41,7 +41,8 @@ def xlsx(path: Path, *, filled=False, bad_formula=False, bad_anchor=False):
                                       {"r": "A" + str(r), "t": "inlineStr"})
                 ET.SubElement(ET.SubElement(label, "{" + NS + "}is"), "{" + NS + "}t").text = (
                     "Incorrect" if bad_anchor and i == 1 and r == 1 else name)
-                if filled or (bad_formula and i == 1 and r == 1):
+                if True:
+                    # Real templates provide an explicitly styled blank destination cell.
                     target = ET.SubElement(row, "{" + NS + "}c", {"r": "B" + str(r)})
                     if bad_formula and i == 1 and r == 1:
                         ET.SubElement(target, "{" + NS + "}f").text = "1+2"
