@@ -16,6 +16,12 @@ const sourceKeys = [
  ['advisory_rules','Optional evidence warning checks (.json)'],
  ['folder','Private working folder']
 ];
+const entityKeys = [
+ ['entity_key','Private entity identifier'],
+ ['assessment_year','Assessment year (e.g. 2026-27)'],
+ ['itr_form','ITR form (e.g. ITR-6)'],
+ ['entity_schema_profile','Reviewed entity-specific schema (.json)']
+];
 const benchmarkKeys = [
  ['benchmark_generated','Previously generated import-format workbook'],
  ['completed_reference','Independently completed ITR workbook (.xlsm / .xlsx)'],
@@ -66,6 +72,7 @@ fieldInputs($('source-advanced-inputs'),sourceKeys.filter(([key])=>!['source','p
 fieldInputs($('build-inputs'),buildKeys.filter(([key])=>['template','output'].includes(key)));
 fieldInputs($('build-advanced-inputs'),buildKeys.filter(([key])=>!['template','output'].includes(key)));
 fieldInputs($('benchmark-inputs'),benchmarkKeys);
+fieldInputs($('entity-schema-inputs'),entityKeys);
 function collectPaths() {
  const updates={};
  document.querySelectorAll('input[data-path-key]').forEach(el=>{
@@ -222,6 +229,15 @@ function renderGateStatus(){
  el.textContent=text;
  el.classList.toggle('ready',!open&&!missing&&!other&&state.entries.length>0);
 }
+function renderEntitySchema(){
+ const x=state.latest_entity_schema;
+ $('entity-schema-status').textContent=x?
+   x.status+' · '+x.resolved_fields+'/'+x.configured_fields+
+   ' defined fields located; '+x.blocking_exceptions.length+
+   ' required errors, '+x.applicability_review.length+
+   ' applicability decisions pending.':
+   'Not validated. Build copy requires this entity, year, form and approved schema.';
+}
 function renderBenchmark(){
  const record=state.latest_benchmark;
  const body=$('benchmark-table').tBodies[0];body.replaceChildren();
@@ -267,7 +283,7 @@ function renderTemplatePreflight(){
  });
 }
 function render(){
- renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();
+ renderPaths();renderMapping();renderFindings();renderWarnings();renderGateStatus();renderBenchmark();renderTemplatePreflight();renderEntitySchema();
 }
 async function run(task,msg) {
  try{
@@ -324,6 +340,10 @@ $('review-export').addEventListener('click',()=>run(async()=>{
 $('resolve-btn').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/resolve-details');
  render();},'Official detailed fields resolved; review the new layout.'));
+$('entity-schema-run').addEventListener('click',()=>run(async()=>{
+ await syncPaths();state=await api('/api/entity-schema-check');render();
+ $('entity-schema-section').open=true;
+},'Entity-specific schema checked against the original export.'));
 $('benchmark-run').addEventListener('click',()=>run(async()=>{
  await syncPaths();state=await api('/api/benchmark-completed');render();
  $('benchmark-section').open=true;

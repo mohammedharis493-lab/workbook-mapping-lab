@@ -1,4 +1,4 @@
-"""Local-only browser review desk over the existing accountant-reviewed engine.
+﻿"""Local-only browser review desk over the existing accountant-reviewed engine.
 
 No cloud, login, network binding, telemetry, client-data upload, or external API.
 The browser is a presentation layer; all workbook/approval rules are reused.
@@ -30,12 +30,14 @@ from .simulator import WorkbookSnapshot
 from .template_contract import detail_coverage
 from .manual_benchmark import compare_completed_return
 from .export_preflight import preflight_export
+from .entity_schema import load_entity_profile, inspect_entity_profile
 
 CONFIG_KEYS = frozenset((
     "source", "previous", "profile", "layout", "prior_rules",
     "previous_target", "folder", "source_controls", "output_controls",
     "template", "output", "detail_routes", "companion_details", "advisory_rules",
     "benchmark_generated", "completed_reference", "benchmark_contract",
+    "entity_schema_profile", "entity_key", "assessment_year", "itr_form",
 ))
 STATIC = {
     "/": ("review_browser.html", "text/html; charset=utf-8"),
@@ -62,6 +64,7 @@ class Workspace:
         self.latest_saved: dict | None = None
         self.latest_benchmark: dict | None = None
         self.latest_preflight: dict | None = None
+        self.latest_entity_schema: dict | None = None
         self.profile = None
         self.lock = threading.RLock()
 
@@ -85,6 +88,7 @@ class Workspace:
             "latest_saved": self.latest_saved,
             "latest_benchmark": self.latest_benchmark,
             "latest_preflight": self.latest_preflight,
+            "latest_entity_schema": self.latest_entity_schema,
         }
 
     @staticmethod
@@ -110,6 +114,7 @@ class Workspace:
             self.latest_saved = None
             self.latest_benchmark = None
             self.latest_preflight = None
+            self.latest_entity_schema = None
         return self.data()
 
     def refresh_warnings(self) -> dict:
@@ -286,11 +291,50 @@ class Workspace:
         }
         return self.data()
 
+    def check_entity_schema(self) -> dict:
+        """Fail closed: validate identity, exact workbook, and approved layout."""
+        profile = load_entity_profile(self.file("entity_schema_profile"))
+        result = inspect_entity_profile(
+            self.file("template"), profile,
+            expected_entity_key=self.file("entity_key"),
+            expected_assessment_year=self.file("assessment_year"),
+            expected_itr_form=self.file("itr_form"),
+        )
+        self.latest_entity_schema = result
+        return self.data()
+
+    def _require_entity_schema_for_build(self) -> None:
+        # Re-evaluate on each build, not just when a previous browser tab
+        # claims success: the template, profile or approved layout may change.
+        self.check_entity_schema()
+        result = self.latest_entity_schema
+        if result["status"] != "READY_FOR_MAPPING_REVIEW":
+            raise ValueError("ENTITY_SCHEMA_NOT_READY: " + result["status"])
+        approved = load_csv(self.file("layout"),
+            ("field_id","section","sheet","cell","anchor_cell","anchor_text"))
+        actual = {f["field_id"]: f for f in result["candidate_layout"]}
+        missing_required = {f["field_id"] for f in load_entity_profile(self.file("entity_schema_profile"))["fields"] if f["applicability"] == "required"} - {f["field_id"] for f in approved}
+        if missing_required:
+            raise ValueError("ENTITY_SCHEMA_REQUIRED_FIELDS_NOT_MAPPED: " + ",".join(sorted(missing_required)))
+        seen = set()
+        for field in approved:
+            fid = field["field_id"]
+            if fid in seen or fid not in actual:
+                raise ValueError("ENTITY_SCHEMA_FIELD_NOT_APPROVED: " + fid)
+            seen.add(fid)
+            expected = actual[fid]
+            for key in ("sheet", "cell", "section", "anchor_cell"):
+                if field[key] != expected[key]:
+                    raise ValueError("ENTITY_SCHEMA_LAYOUT_MISMATCH: " + fid)
+            if field["anchor_text"].strip().casefold() != expected["anchor_text"].strip().casefold():
+                raise ValueError("ENTITY_SCHEMA_CAPTION_MISMATCH: " + fid)
+
     def build(self) -> dict:
         if not self.review or self.review.unresolved():
             raise ValueError("All source classifications require approval before building")
         if not self.latest_saved or self.latest_saved["status"] != "PASS":
             raise ValueError("Export a PASS mapping review before building")
+        self._require_entity_schema_for_build()
         report = self._new_file("browser_build_exceptions_PRIVATE_", ".json")
         result = controlled_build(
             source=self.latest_saved["sources"],
@@ -323,6 +367,7 @@ def create_server(workspace: Workspace, *, port: int = 0):
         "/api/build": lambda _: workspace.build(),
         "/api/benchmark-completed": lambda _: workspace.benchmark_completed(),
         "/api/template-readiness": lambda _: workspace.check_template_readiness(),
+        "/api/entity-schema-check": lambda _: workspace.check_entity_schema(),
         "/api/resolve-details": lambda _: workspace.resolve_details(),
         "/api/scan": workspace.scan,
     }
@@ -461,3 +506,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
