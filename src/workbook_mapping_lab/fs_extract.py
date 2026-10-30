@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -153,8 +153,7 @@ def extract_profile(
                     risks=[]
                     if identity_counts[key]>1:
                         risks.append("DUPLICATE_CAPTION")
-                    if raw["formula"]:
-                        risks.append("FORMULA_CACHED_VALUE")
+                    notices = ["FORMULA_CACHED_VALUE"] if raw["formula"] else []
                     if any(phrase in label.casefold() for phrase in SUSPICIOUS_LABELS):
                         risks.append("POSSIBLE_TOTAL_OR_DISCLOSURE")
                     py = None
@@ -183,6 +182,7 @@ def extract_profile(
                         "sheet":sheet, "cell":f"{current_col}{row}",
                         "previous_amount":"" if py is None else format(py,"f"),
                         "risk":";".join(risks),
+                        "notice":";".join(notices),
                     }
                     found.append(entry)
                     for risk in risks:
