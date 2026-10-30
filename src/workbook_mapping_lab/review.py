@@ -120,7 +120,11 @@ class ReviewSession:
             if f.exists():
                 raise FileExistsError(f"Refusing to overwrite an existing private file: {f.name}")
         outputs,exceptions,trace=self.compiled()
-        external=[i for i in self.issues if i.get("source_id") in self.entries]
+        # Global extraction errors (missing sheets, wrong year headers, etc.)
+        # must never disappear from the release decision.
+        external=[i for i in self.issues if not i.get("source_id") or i.get("source_id") in self.entries]
+        global_errors=[i for i in external if not i.get("source_id")]
+        exceptions.extend(global_errors)
         unresolved=self.unresolved()
         for sid in unresolved:
             exceptions.append({"issue":"PENDING_ACCOUNTANT_REVIEW","source_id":sid,"field_id":"","detail":self.entries[sid].get("risk","")})
