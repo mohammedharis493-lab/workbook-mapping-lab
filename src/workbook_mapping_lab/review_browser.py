@@ -35,6 +35,7 @@ from .export_preflight import preflight_export
 from .entity_schema import load_entity_profile, inspect_entity_profile
 from .schema_discovery import (discover_entity_fields, set_candidate_decision,
                                reviewed_profile, save_private_profile)
+from .warning_journal import save_journal, load_journal, reviewed_identity
 
 CONFIG_KEYS = frozenset((
     "source", "previous", "profile", "layout", "prior_rules",
@@ -260,6 +261,27 @@ class Workspace:
         }, indent=2), encoding="utf-8")
         return {"path": str(path), "count": len(records)}
 
+    def save_warning_journal(self) -> dict:
+        """Save explicit non-blocking decisions only to the private folder."""
+        identity = reviewed_identity(self.config)
+        self.refresh_warnings()
+        result = save_journal(self.file("folder"), identity,
+                              self._warning_evidence_signature,
+                              self.warnings, self.decisions)
+        return {"journal": result, **self.data()}
+
+    def load_warning_journal(self, args: dict) -> dict:
+        """Fail closed on any source/identity/warning mismatch; no auto-build."""
+        identity = reviewed_identity(self.config)
+        journal_path = args.get("path", "")
+        if not isinstance(journal_path, str) or not journal_path.strip():
+            raise ValueError("Select the private warning review journal JSON")
+        self.refresh_warnings()
+        restored = load_journal(journal_path, self.file("folder"), identity,
+                                self._warning_evidence_signature, self.warnings)
+        self.decisions = restored
+        return {"journal": {"loaded_count": len(restored)}, **self.data()}
+
     def save_review(self) -> dict:
         if not self.review:
             raise ValueError("Extract financial statements before saving")
@@ -463,6 +485,8 @@ def create_server(workspace: Workspace, *, port: int = 0):
         "/api/warnings": lambda _: workspace.refresh_warnings(),
         "/api/warning-decision": workspace.warning_decision,
         "/api/warnings-export": lambda _: workspace.export_warnings(),
+        "/api/warnings-journal-save": lambda _: workspace.save_warning_journal(),
+        "/api/warnings-journal-load": workspace.load_warning_journal,
         "/api/approve": workspace.approve,
         "/api/revoke": workspace.revoke,
         "/api/save-review": lambda _: workspace.save_review(),
