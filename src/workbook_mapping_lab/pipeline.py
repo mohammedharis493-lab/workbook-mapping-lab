@@ -146,12 +146,13 @@ def main() -> None:
         p.add_argument("--"+key, required=True)
     p.add_argument("--rounding",choices=("exact","whole_rupees"),default="exact")
     p.add_argument("--previous-export",help="Optional historical populated vendor export used to block missing detail schedules")
+    p.add_argument("--companion-details",help="Private parent-to-child field amounts; child totals must reconcile")
     a=p.parse_args()
     report=controlled_build(
         source=a.source, rules=a.rules,layout=a.layout,template=a.template,
         source_controls=a.source_controls,output_controls=a.output_controls,
         output=a.output,exception_report=a.exception_report,rounding=a.rounding,
-        previous_export=a.previous_export)
+        previous_export=a.previous_export,companion_details=a.companion_details)
     print(json.dumps({k:v for k,v in report.items() if k not in ("trace","rounding_differences")},indent=2))
     if report["status"]!="PASS":
         raise SystemExit(2)
