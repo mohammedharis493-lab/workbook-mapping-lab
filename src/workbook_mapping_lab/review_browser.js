@@ -421,6 +421,23 @@ $('warnings-export').addEventListener('click',()=>run(async()=>{
  await syncPaths();const data=await api('/api/warnings-export');
  notice('Private warning report saved: '+data.path);
 }));
+$('warnings-journal-save').addEventListener('click',()=>run(async()=>{
+ await syncPaths();
+ const data=await api('/api/warnings-journal-save');
+ state=data;render();
+ $('warnings-journal-path').value=data.journal.path;
+ $('warnings-journal-status').textContent='Saved '+data.journal.decision_count+
+   ' decision(s) privately: '+data.journal.path;
+},'Private advisory decisions saved; no accounting approvals changed.'));
+$('warnings-journal-load').addEventListener('click',()=>run(async()=>{
+ await syncPaths();
+ const path=$('warnings-journal-path').value.trim();
+ if(!path)throw new Error('Select a private review journal JSON file');
+ const data=await api('/api/warnings-journal-load',{path});
+ state=data;render();
+ $('warnings-journal-status').textContent='Restored '+data.journal.loaded_count+
+   ' matching decision(s). Any changed evidence is rejected.';
+},'Matching non-blocking advisory decisions restored.'));
 $('review-export').addEventListener('click',()=>run(async()=>{
  await syncPaths();const data=await api('/api/save-review');
  state=data;

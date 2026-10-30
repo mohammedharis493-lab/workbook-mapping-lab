@@ -90,6 +90,15 @@
 
  <section id="view-warnings" class="view" hidden aria-labelledby="warning-heading">
   <div class="section-head"><div><h2 id="warning-heading">Warnings</h2><p class="muted">Helpful checks, never automatic changes to your accounts.</p></div><div class="actions"><button id="warnings-refresh">Re-check evidence</button><button id="warnings-export">Export privately</button></div></div>
+  <details class="advanced" id="warnings-journal-panel">
+   <summary>Private review journal <span class="summary-hint">Resume only if entity, year and exact evidence match</span></summary>
+   <div class="advanced-content">
+    <p class="muted">Set the entity identifier, assessment year and ITR form under Build copy first. Saving keeps advisory notes in your private working folder. Loading verifies the complete source-file fingerprints and warning list before restoring any decision. It never approves mappings or changes figures.</p>
+    <label>Existing private journal (.json)<input id="warnings-journal-path" type="text" placeholder="Local path to a previously saved review journal" autocomplete="off"></label>
+    <div class="actions"><button id="warnings-journal-save" type="button">Save review decisions</button><button id="warnings-journal-load" type="button">Load matching decisions</button></div>
+    <p id="warnings-journal-status" class="result-line muted" role="status">No private review journal loaded in this session.</p>
+   </div>
+  </details>
   <div class="warning-grid">
    <div id="warning-list" class="warning-list"><p class="empty">No warnings loaded. Choose Re-check evidence.</p></div>
    <article class="warning-detail">

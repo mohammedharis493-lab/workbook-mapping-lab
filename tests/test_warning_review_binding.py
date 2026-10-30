@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from test_advisories import workbook
 from workbook_mapping_lab.advisories import advisory, warning_review_key
 from workbook_mapping_lab.review_browser import Workspace
+from workbook_mapping_lab.warning_journal import load_journal
 
 
 class WarningReviewBindingTests(unittest.TestCase):
@@ -94,6 +95,90 @@ class WarningReviewBindingTests(unittest.TestCase):
         self.assertNotEqual(key, warning_review_key(dict(item, difference="1"),
                                                     "source-digest"))
         self.assertNotEqual(key, warning_review_key(item, "other-digest"))
+
+    def prepare_journal(self):
+        folder = self.itr.parent / "private_reports"
+        self.workspace.set_config({
+            "folder": str(folder), "entity_key": "synthetic-ltd",
+            "assessment_year": "2026-27", "itr_form": "ITR-6",
+        })
+        self.review_ageing()
+        path = Path(self.workspace.save_warning_journal()["journal"]["path"])
+        return folder, path
+
+    def test_private_journal_round_trip_restores_notes_without_approving_mappings(self):
+        before = self.fs.read_bytes(), self.itr.read_bytes()
+        folder, path = self.prepare_journal()
+        self.assertTrue(path.is_relative_to(folder))
+        fresh = Workspace()
+        fresh.set_config(dict(self.workspace.config))
+        report = fresh.load_warning_journal({"path": str(path)})
+        self.assertEqual(report["journal"]["loaded_count"], 1)
+        reviewed = [w for w in report["warnings"] if w["acknowledged"]]
+        self.assertEqual(len(reviewed), 1)
+        self.assertEqual(reviewed[0]["reviewer_note"], "Invoice dates checked")
+        self.assertIsNone(fresh.review)
+        self.assertIsNone(fresh.latest_saved)
+        self.assertEqual(before, (self.fs.read_bytes(), self.itr.read_bytes()))
+
+    def test_changed_source_bytes_block_restoration_atomically(self):
+        _, path = self.prepare_journal()
+        self.itr_cells["Z20"] = "Unrelated updated line"
+        self.rewrite_return()
+        fresh = Workspace()
+        fresh.set_config(dict(self.workspace.config))
+        with self.assertRaisesRegex(ValueError, "evidence changed"):
+            fresh.load_warning_journal({"path": str(path)})
+        self.assertEqual(fresh.decisions, {})
+
+    def test_different_entity_year_and_form_are_rejected(self):
+        _, path = self.prepare_journal()
+        for key, replacement in (("entity_key", "other"),
+                                 ("assessment_year", "2027-28"),
+                                 ("itr_form", "ITR-5")):
+            with self.subTest(key=key):
+                fresh = Workspace()
+                configuration = dict(self.workspace.config)
+                configuration[key] = replacement
+                fresh.set_config(configuration)
+                with self.assertRaisesRegex(ValueError, "does not match"):
+                    fresh.load_warning_journal({"path": str(path)})
+                self.assertFalse(fresh.decisions)
+
+    def test_journal_outside_private_folder_is_not_loaded(self):
+        _, path = self.prepare_journal()
+        outside = path.parent.parent / "copied_report.json"
+        outside.write_bytes(path.read_bytes())
+        fresh = Workspace()
+        fresh.set_config(dict(self.workspace.config))
+        with self.assertRaisesRegex(ValueError, "inside the configured private folder"):
+            fresh.load_warning_journal({"path": str(outside)})
+        self.assertFalse(fresh.decisions)
+
+    def test_tampered_or_duplicate_warning_records_are_rejected(self):
+        _, path = self.prepare_journal()
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["decisions"].append(dict(data["decisions"][0]))
+        changed = path.with_name("altered_journal.json")
+        changed.write_text(json.dumps(data), encoding="utf-8")
+        fresh = Workspace()
+        fresh.set_config(dict(self.workspace.config))
+        with self.assertRaisesRegex(ValueError, "Invalid journal decisions"):
+            fresh.load_warning_journal({"path": str(changed)})
+        self.assertFalse(fresh.decisions)
+
+    def test_changed_warning_fingerprint_rejects_same_file_snapshot(self):
+        folder, path = self.prepare_journal()
+        changed = [dict(item, explanation="Changed check wording")
+                   for item in self.workspace.warnings]
+        with self.assertRaisesRegex(ValueError, "findings have changed"):
+            load_journal(str(path), str(folder), dict(self.workspace.config),
+                         self.workspace._warning_evidence_signature, changed)
+
+    def test_journal_requires_explicit_entity_context(self):
+        self.workspace.set_config({"folder": str(self.itr.parent / "private")})
+        with self.assertRaisesRegex(ValueError, "Choose an entity identifier"):
+            self.workspace.save_warning_journal()
 
 
 if __name__ == "__main__":
