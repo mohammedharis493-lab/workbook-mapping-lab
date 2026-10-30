@@ -29,6 +29,7 @@ class ReviewDesk(tk.Tk):
         self.profile = None
         self.review = None
         self.latest_saved = None
+        self.extraction_issues = []
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
@@ -106,6 +107,7 @@ class ReviewDesk(tk.Tk):
         row.pack(fill="x",**padding)
         ttk.Button(row,text="Extract profile rows",command=self.load_selected).pack(side="left",padx=5)
         ttk.Button(row,text="Find additional rows",command=self.open_scanner).pack(side="left",padx=5)
+        ttk.Button(row,text="View extraction findings",command=self.show_findings).pack(side="left",padx=5)
         ttk.Button(row,text="Save updated profile privately",command=self.save_profile).pack(side="left",padx=5)
         ttk.Label(setup,text=("Use the scan window to add new items. Never include totals and their "
                               "underlying detail in the same section.")).pack(anchor="w",padx=20)
@@ -194,6 +196,7 @@ class ReviewDesk(tk.Tk):
                     rows,self._file("previous_target"),fields)
                 if reference_issues:
                     self.status.set(f"Prior destination lookup: {len(reference_issues)} fields unresolved; review manually.")
+            self.extraction_issues=issues
             self.review=ReviewSession(rows,issues,fields,prior,suggestions=proposals)
             self.latest_saved=None
             self._draw_rows()
@@ -202,6 +205,26 @@ class ReviewDesk(tk.Tk):
                             f"{len(self.review.unresolved())} need decisions; {len(issues)} findings.")
         except Exception as err:
             self._show_error(err)
+
+    def show_findings(self):
+        dlg=tk.Toplevel(self)
+        dlg.title("Source extraction findings")
+        dlg.geometry("900x500")
+        ttk.Label(dlg,text="Review new or changed source lines before building.",
+                  font=("Segoe UI",11,"bold")).pack(anchor="w",padx=12,pady=10)
+        cols=("issue","source_id","detail")
+        tree=ttk.Treeview(dlg,columns=cols,show="headings")
+        for key,width in (("issue",260),("source_id",220),("detail",390)):
+            tree.heading(key,text=key.replace("_"," ").title())
+            tree.column(key,width=width,stretch=key=="detail")
+        tree.pack(fill="both",expand=True,padx=12,pady=7)
+        for i,issue in enumerate(self.extraction_issues):
+            tree.insert("",tk.END,iid=str(i),values=(
+                issue.get("issue",""),issue.get("source_id",""),
+                issue.get("detail","")))
+        ttk.Label(dlg,text="New numeric rows are blocking exceptions until reviewed.").pack(
+            anchor="w",padx=13,pady=10)
+
 
     def _draw_rows(self):
         self.tree.delete(*self.tree.get_children())
