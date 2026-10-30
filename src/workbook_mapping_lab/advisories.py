@@ -7,10 +7,46 @@ unverified rather than silently assuming a correct classification.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from .simulator import WorkbookSnapshot
+
+
+def evidence_digest(paths: dict[str, str]) -> str:
+    """Bind a review to the exact local evidence bytes, never to filenames alone.
+
+    This is evaluated only when the reviewer explicitly refreshes evidence.
+    A missing configured workbook fails closed, rather than retaining an old
+    acknowledgement. No file contents or paths are included in the result.
+    """
+    digest = hashlib.sha256()
+    for role, raw in sorted(paths.items()):
+        digest.update(json.dumps([role, bool(raw)], separators=(",", ":")).encode())
+        if raw:
+            path = Path(raw).resolve()
+            digest.update(str(path).encode("utf-8"))
+            with path.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+    return digest.hexdigest()
+
+
+def warning_review_key(item: dict, evidence_signature: str = "") -> str:
+    """Fingerprint the actual finding and its evidence revision for review.
+
+    Review notes and the acknowledged flag are deliberately excluded so
+    changing a decision cannot alter the identity of the underlying warning.
+    """
+    fields = ("code", "severity", "period", "title", "explanation",
+              "suggested_action", "difference", "evidence")
+    payload = {key: item.get(key) for key in fields}
+    payload["evidence_signature"] = evidence_signature
+    serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False,
+                            separators=(",", ":"), default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def value(raw: str) -> Decimal | None:
