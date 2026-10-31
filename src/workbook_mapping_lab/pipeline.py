@@ -17,6 +17,7 @@ from .mapping import load_csv
 from .writer import populate
 from .template_contract import detail_coverage
 from .detail_companions import add_companion_fields
+from .entity_schema import require_approved_entity_schema
 
 
 def _csv(path: str, columns: tuple[str, ...], rows: list[dict]) -> None:
@@ -147,7 +148,19 @@ def main() -> None:
     p.add_argument("--rounding",choices=("exact","whole_rupees"),default="exact")
     p.add_argument("--previous-export",help="Optional historical populated vendor export used to block missing detail schedules")
     p.add_argument("--companion-details",help="Private parent-to-child field amounts; child totals must reconcile")
+    p.add_argument("--entity-schema-profile",required=True,
+                   help="Private reviewed schema for this exact native export")
+    p.add_argument("--entity-key",required=True,
+                   help="Explicit identity of this entity; not inferred from a prior client")
+    p.add_argument("--assessment-year",required=True)
+    p.add_argument("--itr-form",required=True)
     a=p.parse_args()
+    require_approved_entity_schema(
+        template=a.template, layout=a.layout, profile_path=a.entity_schema_profile,
+        expected_entity_key=a.entity_key,
+        expected_assessment_year=a.assessment_year,
+        expected_itr_form=a.itr_form,
+    )
     report=controlled_build(
         source=a.source, rules=a.rules,layout=a.layout,template=a.template,
         source_controls=a.source_controls,output_controls=a.output_controls,

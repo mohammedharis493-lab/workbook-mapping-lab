@@ -32,7 +32,8 @@ from .template_contract import detail_coverage
 from .manual_benchmark import compare_completed_return
 from .import_intake import inspect_native_import_coverage
 from .export_preflight import preflight_export
-from .entity_schema import load_entity_profile, inspect_entity_profile
+from .entity_schema import (load_entity_profile, inspect_entity_profile,
+                            require_approved_entity_schema)
 from .schema_discovery import (discover_entity_fields, set_candidate_decision,
                                reviewed_profile, save_private_profile)
 from .warning_journal import save_journal, load_journal, reviewed_identity
@@ -428,30 +429,14 @@ class Workspace:
         return self.data()
 
     def _require_entity_schema_for_build(self) -> None:
-        # Re-evaluate on each build, not just when a previous browser tab
-        # claims success: the template, profile or approved layout may change.
-        self.check_entity_schema()
-        result = self.latest_entity_schema
-        if result["status"] != "READY_FOR_MAPPING_REVIEW":
-            raise ValueError("ENTITY_SCHEMA_NOT_READY: " + result["status"])
-        approved = load_csv(self.file("layout"),
-            ("field_id","section","sheet","cell","anchor_cell","anchor_text"))
-        actual = {f["field_id"]: f for f in result["candidate_layout"]}
-        missing_required = {f["field_id"] for f in load_entity_profile(self.file("entity_schema_profile"))["fields"] if f["applicability"] == "required"} - {f["field_id"] for f in approved}
-        if missing_required:
-            raise ValueError("ENTITY_SCHEMA_REQUIRED_FIELDS_NOT_MAPPED: " + ",".join(sorted(missing_required)))
-        seen = set()
-        for field in approved:
-            fid = field["field_id"]
-            if fid in seen or fid not in actual:
-                raise ValueError("ENTITY_SCHEMA_FIELD_NOT_APPROVED: " + fid)
-            seen.add(fid)
-            expected = actual[fid]
-            for key in ("sheet", "cell", "section", "anchor_cell"):
-                if field[key] != expected[key]:
-                    raise ValueError("ENTITY_SCHEMA_LAYOUT_MISMATCH: " + fid)
-            if field["anchor_text"].strip().casefold() != expected["anchor_text"].strip().casefold():
-                raise ValueError("ENTITY_SCHEMA_CAPTION_MISMATCH: " + fid)
+        # Re-evaluate the exact template, profile and approved layout on build.
+        self.latest_entity_schema = require_approved_entity_schema(
+            template=self.file("template"), layout=self.file("layout"),
+            profile_path=self.file("entity_schema_profile"),
+            expected_entity_key=self.file("entity_key"),
+            expected_assessment_year=self.file("assessment_year"),
+            expected_itr_form=self.file("itr_form"),
+        )
 
     def build(self) -> dict:
         if not self.review or self.review.unresolved():

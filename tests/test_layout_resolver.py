@@ -1,15 +1,20 @@
 """Synthetic only: approved routes resolved against native blank vendor exports."""
 import sys
+import json
+import hashlib
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 from zipfile import ZipFile
 from xml.etree import ElementTree as ET
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
 from test_simulator import NS, REL, PKG, write_csv
 from workbook_mapping_lab.layout_resolver import resolve_layout, write_private_layout
-from workbook_mapping_lab.writer import populate
+from workbook_mapping_lab.writer import populate, main as writer_main
 from workbook_mapping_lab.simulator import WorkbookSnapshot
 
 
@@ -106,6 +111,52 @@ class ResolverTests(unittest.TestCase):
         result=resolve_layout(str(self.vendor),self.route+self.route)
         self.assertEqual(result["status"],"BLOCKED")
         self.assertIn("DUPLICATE_OR_BLANK_FIELD_ID",[x["code"] for x in result["exceptions"]])
+
+    def secure_writer_cli_args(self):
+        profile=self.root/"reviewed_entity.json"
+        profile.write_text(json.dumps({
+            "version":1,"entity_key":"synthetic-entity",
+            "assessment_year":"2026-27","itr_form":"ITR-6",
+            "template_sha256":hashlib.sha256(self.vendor.read_bytes()).hexdigest(),
+            "fields":[{
+                **self.route[0],"applicability":"required",
+            }],
+        }),encoding="utf-8")
+        resolved=resolve_layout(str(self.vendor),self.route)
+        layout=self.root/"layout.csv"
+        write_private_layout(resolved,str(layout))
+        values=self.root/"values.csv"
+        write_csv(values,("field_id","section","amount"),[("RELATED","BS-L","4380")])
+        output=self.root/"writer_checked.xlsx"
+        return ["writer", "--template",str(self.vendor),
+            "--layout",str(layout),"--values",str(values),
+            "--output",str(output),"--entity-schema-profile",str(profile),
+            "--entity-key","synthetic-entity","--assessment-year","2026-27",
+            "--itr-form","ITR-6"]
+
+    def test_writer_cli_requires_reviewed_entity_schema(self):
+        args=self.secure_writer_cli_args()
+        with patch.object(sys,"argv",args[:-8]):
+            with redirect_stderr(io.StringIO()),self.assertRaises(SystemExit) as error:
+                writer_main()
+        self.assertEqual(error.exception.code,2)
+        self.assertFalse((self.root/"writer_checked.xlsx").exists())
+
+    def test_writer_cli_runs_after_exact_schema_preflight(self):
+        args=self.secure_writer_cli_args()
+        with patch.object(sys,"argv",args):
+            with redirect_stdout(io.StringIO()):
+                writer_main()
+        with WorkbookSnapshot(self.root/"writer_checked.xlsx") as output:
+            self.assertEqual(output.cell("Related Details","B11")["value"],"4380")
+
+    def test_writer_cli_rejects_wrong_entity_before_creating_copy(self):
+        args=self.secure_writer_cli_args()
+        args[args.index("--entity-key")+1]="different-entity"
+        with patch.object(sys,"argv",args):
+            with self.assertRaisesRegex(ValueError,"IDENTITY_OR_YEAR_MISMATCH"):
+                writer_main()
+        self.assertFalse((self.root/"writer_checked.xlsx").exists())
 
 
 if __name__=="__main__":

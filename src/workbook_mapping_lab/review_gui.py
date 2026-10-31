@@ -22,6 +22,7 @@ from .template_contract import detail_coverage
 from .advisories import (check_advisories, advisory, evaluate_evidence_rules,
                          load_evidence_rules, evidence_digest, warning_review_key)
 from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
+from .entity_schema import require_approved_entity_schema
 
 
 class ReviewDesk(tk.Tk):
@@ -40,7 +41,8 @@ class ReviewDesk(tk.Tk):
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
-                "folder","source_controls","output_controls","template","output","detail_routes","companion_details","advisory_rules"
+                "folder","source_controls","output_controls","template","output","detail_routes","companion_details","advisory_rules",
+                "entity_schema_profile","entity_key","assessment_year","itr_form",
             )
         }
         self.section=tk.StringVar(value="BS-A")
@@ -70,7 +72,7 @@ class ReviewDesk(tk.Tk):
                     defaultextension=".xlsx",filetypes=[("Excel workbook","*.xlsx")])
             elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes","companion_details","advisory_rules"):
                 p=filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
-            elif key=="profile":
+            elif key in ("profile", "entity_schema_profile"):
                 p=filedialog.askopenfilename(filetypes=[("Profile JSON","*.json")])
             else:
                 p=filedialog.askopenfilename(filetypes=[("Excel workbook","*.xlsx"),("All files","*.*")])
@@ -81,6 +83,11 @@ class ReviewDesk(tk.Tk):
                     self.latest_saved=None
         ttk.Button(parent,text="Browse",command=browse,width=10).grid(row=row,column=2,padx=4)
         return entry
+
+    def _text_row(self, parent, label, key, row):
+        ttk.Label(parent,text=label).grid(row=row,column=0,sticky="w",padx=5,pady=4)
+        ttk.Entry(parent,textvariable=self.variables[key],width=90).grid(
+            row=row,column=1,sticky="ew",padx=5)
 
     def _make_widgets(self):
         padding={"padx":11,"pady":6}
@@ -195,16 +202,23 @@ class ReviewDesk(tk.Tk):
         task=ttk.LabelFrame(build,text="Only after every extracted item is reviewed")
         task.pack(fill="x",padx=10,pady=12)
         task.columnconfigure(1,weight=1)
-        for i,(label,key,kind) in enumerate([
-            ("Original blank destination template","template","file"),
-            ("Independent source section totals","source_controls","file"),
-            ("Independent expected output totals","output_controls","file"),
-            ("Approved parent-child detail amounts (optional)","companion_details","file"),
-            ("New checked-copy output filename","output","save"),
-        ]):
-            self._path_row(task,label,key,kind,i)
+        for row,label,key,kind in (
+            (0,"Original blank destination template","template","file"),
+            (1,"Reviewed entity-specific ITR schema (.json)","entity_schema_profile","file"),
+            (5,"Independent source section totals","source_controls","file"),
+            (6,"Independent expected output totals","output_controls","file"),
+            (7,"Approved parent-child detail amounts (optional)","companion_details","file"),
+            (8,"New checked-copy output filename","output","save"),
+        ):
+            self._path_row(task,label,key,kind,row)
+        for row,label,key in (
+            (2,"Entity identity","entity_key"),
+            (3,"Assessment year (e.g. 2026-27)","assessment_year"),
+            (4,"ITR form (e.g. ITR-6)","itr_form"),
+        ):
+            self._text_row(task,label,key,row)
         ttk.Button(task,text="Build and verify checked copy",command=self.build_copy).grid(
-            row=5,column=1,sticky="e",padx=10,pady=15)
+            row=9,column=1,sticky="e",padx=10,pady=15)
         ttk.Label(build,text="This does not submit to any external application. Use an unused output filename.").pack(
             anchor="w",padx=20)
 
@@ -633,6 +647,13 @@ class ReviewDesk(tk.Tk):
                 raise ValueError("Resolve all selected-source mapping decisions first")
             if not self.latest_saved or self.latest_saved["status"]!="PASS":
                 raise ValueError("Export a PASS private review before building")
+            require_approved_entity_schema(
+                template=self._file("template"), layout=self._file("layout"),
+                profile_path=self._file("entity_schema_profile"),
+                expected_entity_key=self._file("entity_key"),
+                expected_assessment_year=self._file("assessment_year"),
+                expected_itr_form=self._file("itr_form"),
+            )
             if not messagebox.askyesno("Build workbook copy",
                   "Generate a new test-only XLSX using the reviewed rules and independent totals?\n"
                   "The original template will remain unchanged.",parent=self):

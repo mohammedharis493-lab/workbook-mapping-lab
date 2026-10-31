@@ -17,6 +17,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from .simulator import WorkbookSnapshot, _load_rows, _money, review
+from .entity_schema import require_approved_entity_schema
 
 DISALLOWED_PARTS = ("/vbaproject", "_xmlsignatures/", "/externallink")
 CELL_TAG = re.compile(
@@ -150,7 +151,19 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--controls")
     parser.add_argument("--report", help="Optional private local report")
+    parser.add_argument("--entity-schema-profile", required=True,
+                        help="Private reviewed schema for this exact native workbook")
+    parser.add_argument("--entity-key", required=True)
+    parser.add_argument("--assessment-year", required=True)
+    parser.add_argument("--itr-form", required=True)
     args = parser.parse_args()
+    require_approved_entity_schema(
+        template=args.template, layout=args.layout,
+        profile_path=args.entity_schema_profile,
+        expected_entity_key=args.entity_key,
+        expected_assessment_year=args.assessment_year,
+        expected_itr_form=args.itr_form,
+    )
     result = populate(args.template, args.layout, args.values, args.output,
                       controls=args.controls)
     if args.report:

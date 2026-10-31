@@ -31,7 +31,34 @@ Run: python -m workbook_mapping_lab.entity_schema --template PRIVATE_CURRENT_EXP
 
 Keep every private profile outside the public repository.
 
-**Current integration limitation:** The validator is available as a separate schema check; the existing CSV mapping/build pipeline is unchanged. It is not yet a compulsory gate for all browser-initiated builds. A profile must be inspected for its selected export before claiming entity-specific schema validation.
+## Build preflight across user-facing entry points
+
+Browser, Classic desktop, controlled-pipeline CLI and direct-writer CLI builds must now pass a shared
+`require_approved_entity_schema` preflight before generating a checked copy.
+It verifies the private reviewed profile's entity, assessment year, ITR form
+and exact original native-export SHA-256. Every approved CSV destination must
+match a currently resolved native sheet, anchor, blank amount cell, statement
+section and caption. Required profile fields missing from the approved layout
+are blocking. Undecided applicability never becomes a zero or an approval.
+
+For either command-line build, add these required options to the existing
+`python -m workbook_mapping_lab.pipeline` or
+`python -m workbook_mapping_lab.writer` invocation:
+
+    --entity-schema-profile PRIVATE_REVIEWED_ENTITY.json
+    --entity-key VERIFIED_ENTITY_KEY
+    --assessment-year 2026-27
+    --itr-form ITR-6
+
+The Classic desktop Build tab exposes the same four selections. Users may
+discover and approve native fields in the Chrome workflow, then use its
+privately saved reviewed schema in Classic. No vendor import is performed.
+
+`controlled_build` remains a low-level programmatic engine for synthetic
+tests and explicitly supervised internal use; it does not independently
+enforce entity profile identity. A new integration must run the shared
+preflight or be treated as not release-ready. Historical source-content
+fingerprinting in the Chrome review is a separate safeguard.
 
 ## Acceptance tests
 
