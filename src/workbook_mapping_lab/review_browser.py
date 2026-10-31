@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import subprocess
@@ -45,6 +46,9 @@ CONFIG_KEYS = frozenset((
     "entity_schema_profile", "entity_key", "assessment_year", "itr_form",
     "intake_template",
 ))
+REVIEW_INPUT_KEYS = (
+    "source", "previous", "profile", "layout", "prior_rules", "previous_target",
+)
 STATIC = {
     "/": ("review_browser.html", "text/html; charset=utf-8"),
     "/app.css": ("review_browser.css", "text/css; charset=utf-8"),
@@ -74,6 +78,7 @@ class Workspace:
         self.latest_entity_schema: dict | None = None
         self.latest_import_intake: dict | None = None
         self.entity_discovery: dict | None = None
+        self._review_input_sha256: dict[str, str] | None = None
         self.profile = None
         self.lock = threading.RLock()
 
@@ -113,12 +118,11 @@ class Workspace:
         changed = {key for key, value in updates.items()
                    if self.config[key] != value.strip()}
         self.config.update({key: value.strip() for key, value in updates.items()})
-        if changed.intersection({
-            "source", "previous", "profile", "layout", "prior_rules", "previous_target"
-        }):
+        if changed.intersection(REVIEW_INPUT_KEYS):
             self.review = None
             self.profile = None
             self.issues = []
+            self._review_input_sha256 = None
         if changed.intersection({
             "source", "previous", "previous_target", "advisory_rules",
             "entity_key", "assessment_year", "itr_form"
@@ -137,6 +141,37 @@ class Workspace:
             self.latest_entity_schema = None
             self.latest_import_intake = None
         return self.data()
+
+    def _hash_review_inputs(self) -> dict[str, str]:
+        """Bind approvals to file *contents*, not reusable file paths."""
+        hashes = {}
+        for key in REVIEW_INPUT_KEYS:
+            selected = self.file(key, False)
+            if not selected:
+                hashes[key] = ""
+                continue
+            digest = hashlib.sha256()
+            with open(selected, "rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            hashes[key] = digest.hexdigest()
+        return hashes
+
+    def _require_fresh_review_inputs(self) -> None:
+        if self._review_input_sha256 is None:
+            raise ValueError("REVIEW_INPUTS_NOT_EXTRACTED: extract current files first")
+        try:
+            current = self._hash_review_inputs()
+        except OSError:
+            current = None
+        if current != self._review_input_sha256:
+            self.review = None
+            self.latest_saved = None
+            self._review_input_sha256 = None
+            raise ValueError(
+                "REVIEW_INPUT_CHANGED: source or layout contents changed; "
+                "re-extract and reapprove before building"
+            )
 
     def refresh_warnings(self) -> dict:
         try:
@@ -178,6 +213,7 @@ class Workspace:
         return self.data()
 
     def extract(self) -> dict:
+        pinned_inputs = self._hash_review_inputs()
         profile = load_profile(self.file("profile"))
         fields = load_csv(self.file("layout"),
                           ("field_id", "section", "sheet", "cell",
@@ -209,6 +245,15 @@ class Workspace:
                                     suggestions=proposals)
         self.latest_saved = None
         self.refresh_warnings()
+        try:
+            unchanged = self._hash_review_inputs() == pinned_inputs
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            self.review = None
+            self._review_input_sha256 = None
+            raise ValueError("REVIEW_INPUT_CHANGED_DURING_EXTRACTION: re-extract")
+        self._review_input_sha256 = pinned_inputs
         return self.data()
 
     def approve(self, args: dict) -> dict:
@@ -285,6 +330,7 @@ class Workspace:
     def save_review(self) -> dict:
         if not self.review:
             raise ValueError("Extract financial statements before saving")
+        self._require_fresh_review_inputs()
         prefix = "browser_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         self.latest_saved = self.review.save_review(self.file("folder"), prefix=prefix)
         return {"result": self.latest_saved, **self.data()}
@@ -458,6 +504,7 @@ class Workspace:
             raise ValueError("All source classifications require approval before building")
         if not self.latest_saved or self.latest_saved["status"] != "PASS":
             raise ValueError("Export a PASS mapping review before building")
+        self._require_fresh_review_inputs()
         self._require_entity_schema_for_build()
         report = self._new_file("browser_build_exceptions_PRIVATE_", ".json")
         result = controlled_build(
