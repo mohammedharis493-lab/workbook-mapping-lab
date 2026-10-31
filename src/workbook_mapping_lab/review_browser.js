@@ -89,6 +89,15 @@ async function syncPaths() {
  const updates=collectPaths();
  if(Object.keys(updates).length){const result=await api('/api/config',updates);state=result;}
 }
+function keepActiveTabVisible() {
+ const rail=document.querySelector('.tabs');
+ const active=rail?.querySelector('.tab.active');
+ if(!active)return;
+ const tabBox=active.getBoundingClientRect();
+ const railBox=rail.getBoundingClientRect();
+ if(tabBox.left<railBox.left)rail.scrollLeft-=railBox.left-tabBox.left;
+ else if(tabBox.right>railBox.right)rail.scrollLeft+=tabBox.right-railBox.right;
+}
 function showTab(id) {
  visibleTab=id;
  document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='view-'+id);
@@ -98,8 +107,10 @@ function showTab(id) {
   if(active)el.setAttribute('aria-current','page');
   else el.removeAttribute('aria-current');
  });
+ keepActiveTabVisible();
 }
 document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>showTab(el.dataset.view)));
+window.addEventListener('resize',keepActiveTabVisible);
 $('footer-help').addEventListener('click',()=>$('help-dialog').showModal());
 document.addEventListener('pointerdown',event=>{
  const menu=$('view-menu');
