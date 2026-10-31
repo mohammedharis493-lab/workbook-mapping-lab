@@ -1,14 +1,19 @@
 """End-to-end examples use made-up values and ephemeral blank templates."""
 import json
+import hashlib
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from test_simulator import xlsx, write_csv
-from workbook_mapping_lab.pipeline import controlled_build
+from workbook_mapping_lab.pipeline import controlled_build, main as pipeline_main
 from workbook_mapping_lab.simulator import WorkbookSnapshot
+from workbook_mapping_lab.writer import _patch_existing_cell
 
 
 class PipelineTests(unittest.TestCase):
@@ -74,6 +79,54 @@ class PipelineTests(unittest.TestCase):
         with WorkbookSnapshot(self.template) as original:
             self.assertEqual(original.cell("Balance Sheet","B1")["value"],"")
 
+    def test_late_writer_failure_never_leaves_pass_report(self):
+        def fail_after_mapping_checks(*args, **kwargs):
+            interim=json.loads(self.report.read_text(encoding="utf-8"))
+            self.assertEqual(interim["status"],"VALIDATED_NOT_RELEASED")
+            raise ValueError("BUILD_INPUT_CHANGED: private source edited")
+
+        with patch("workbook_mapping_lab.pipeline.populate",
+                   side_effect=fail_after_mapping_checks):
+            with self.assertRaisesRegex(ValueError,"BUILD_INPUT_CHANGED"):
+                self.build()
+        saved=json.loads(self.report.read_text(encoding="utf-8"))
+        self.assertEqual(saved["status"],"BLOCKED")
+        self.assertEqual(saved["exceptions"][-1]["issue"],"BUILD_INPUT_CHANGED")
+        self.assertNotIn("private source edited",self.report.read_text(encoding="utf-8"))
+        self.assertFalse(self.output.exists())
+
+    def test_racing_output_name_is_not_overwritten_or_reported_pass(self):
+        self.output.write_bytes(b"another process already owns this name")
+        with self.assertRaises(FileExistsError):
+            self.build()
+        saved=json.loads(self.report.read_text(encoding="utf-8"))
+        self.assertEqual(saved["status"],"BLOCKED")
+        self.assertEqual(saved["exceptions"][-1]["issue"],"OUTPUT_ALREADY_EXISTS")
+        self.assertEqual(self.output.read_bytes(),b"another process already owns this name")
+
+    def test_cleanup_failure_after_release_preserves_pass_and_warning(self):
+        original_temporary_directory=tempfile.TemporaryDirectory
+
+        class CleanupFailure:
+            def __init__(self,*args,**kwargs):
+                self.inner=original_temporary_directory(*args,**kwargs)
+
+            def __enter__(self):
+                return self.inner.__enter__()
+
+            def __exit__(self,*args):
+                self.inner.__exit__(*args)
+                raise OSError("synthetic post-release cleanup failure")
+
+        with patch("tempfile.TemporaryDirectory",CleanupFailure):
+            with self.assertRaisesRegex(OSError,"post-release cleanup failure"):
+                self.build()
+        saved=json.loads(self.report.read_text(encoding="utf-8"))
+        self.assertEqual(saved["status"],"PASS")
+        self.assertTrue(self.output.exists())
+        self.assertEqual(saved["writer"]["status"],"PASS")
+        self.assertIn("private staging",saved["post_release_warning"])
+
     def test_exception_blocks_output_and_audits(self):
         self.sources.append(("NEW","PL-E","New charge","15","rupees"))
         self.write_inputs()
@@ -106,6 +159,66 @@ class PipelineTests(unittest.TestCase):
         self.write_inputs()
         result=self.build()
         self.assertEqual(result["status"],"BLOCKED")
+        self.assertFalse(self.output.exists())
+
+    def secure_cli_args(self):
+        schema=self.root/"private_entity_schema.json"
+        schema.write_text(json.dumps({
+            "version":1,"entity_key":"synthetic-entity",
+            "assessment_year":"2026-27","itr_form":"ITR-6",
+            "template_sha256":hashlib.sha256(self.template.read_bytes()).hexdigest(),
+            "fields":[{
+                "field_id":fid,"section":section,"sheet":sheet,"caption":caption,
+                "anchor_column":"A","amount_column":"B","applicability":"required",
+            } for fid,section,sheet,cell,anchor,caption in self.layout_rows],
+        }),encoding="utf-8")
+        return ["pipeline",
+            "--source",str(self.source),"--rules",str(self.rules),
+            "--layout",str(self.layout),"--template",str(self.template),
+            "--source-controls",str(self.source_controls),
+            "--output-controls",str(self.output_controls),
+            "--output",str(self.output),"--exception-report",str(self.report),
+            "--entity-schema-profile",str(schema),
+            "--entity-key","synthetic-entity", "--assessment-year","2026-27",
+            "--itr-form","ITR-6",
+        ]
+
+    def test_cli_build_requires_explicit_entity_schema(self):
+        args=self.secure_cli_args()
+        with patch.object(sys,"argv",args[:-8]):
+            with redirect_stderr(io.StringIO()),self.assertRaises(SystemExit) as error:
+                pipeline_main()
+        self.assertEqual(error.exception.code,2)
+        self.assertFalse(self.output.exists())
+
+    def test_cli_build_uses_private_schema_preflight(self):
+        with patch.object(sys,"argv",self.secure_cli_args()):
+            with redirect_stdout(io.StringIO()):
+                pipeline_main()
+        self.assertTrue(self.output.exists())
+        self.assertTrue(self.report.exists())
+
+    def test_cli_cross_entity_profile_fails_before_any_output(self):
+        args=self.secure_cli_args()
+        args[args.index("--entity-key")+1]="another-entity"
+        with patch.object(sys,"argv",args):
+            with self.assertRaisesRegex(ValueError,"IDENTITY_OR_YEAR_MISMATCH"):
+                pipeline_main()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.report.exists())
+
+    def test_pipeline_cli_rechecks_mappings_source_before_release(self):
+        args=self.secure_cli_args()
+
+        def mutate_source_during_patch(raw,address,amount):
+            self.source.write_bytes(self.source.read_bytes()+b"\n")
+            return _patch_existing_cell(raw,address,amount)
+
+        with patch.object(sys,"argv",args):
+            with patch("workbook_mapping_lab.writer._patch_existing_cell",
+                       side_effect=mutate_source_during_patch):
+                with self.assertRaisesRegex(ValueError,"BUILD_INPUT_CHANGED"):
+                    pipeline_main()
         self.assertFalse(self.output.exists())
 
 

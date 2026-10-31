@@ -14,9 +14,12 @@ import tempfile
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
+from typing import Callable
 from zipfile import ZipFile
 
+from .build_integrity import BuildInputGuard
 from .simulator import WorkbookSnapshot, _load_rows, _money, review
+from .entity_schema import require_approved_entity_schema
 
 DISALLOWED_PARTS = ("/vbaproject", "_xmlsignatures/", "/externallink")
 CELL_TAG = re.compile(
@@ -61,7 +64,8 @@ def _patch_existing_cell(raw: bytes, address: str, amount: str) -> bytes:
 
 
 def populate(template: str, layout: str, values: str, output: str,
-             *, controls: str | None = None) -> dict:
+             *, controls: str | None = None,
+             before_release: Callable[[], None] | None = None) -> dict:
     """Fill a separate copy and reject missing/malformed/unapproved positions."""
     in_path = Path(template).resolve()
     dest = Path(output).resolve()
@@ -74,6 +78,7 @@ def populate(template: str, layout: str, values: str, output: str,
     if not in_path.is_file():
         raise FileNotFoundError("Template does not exist")
 
+    inputs = BuildInputGuard((in_path, layout, values, controls))
     before = review(template, layout, values, controls=controls)
     if before["status"] != "PASS":
         raise ValueError("Preflight BLOCKED: " + json.dumps(before["errors"]))
@@ -83,6 +88,8 @@ def populate(template: str, layout: str, values: str, output: str,
     lookup = {x["field_id"]: x for x in field_rows}
     targets = defaultdict(list)
     with WorkbookSnapshot(in_path) as snapshot:
+        if snapshot.sha256 != before["template_sha256"]:
+            raise ValueError("BUILD_INPUT_CHANGED: template changed during preflight")
         parts = snapshot.archive.namelist()
         if any(any(block in p.lower() for block in DISALLOWED_PARTS) for p in parts):
             raise ValueError("Macros, digital signatures, or external links are unsupported")
@@ -101,6 +108,7 @@ def populate(template: str, layout: str, values: str, output: str,
                 raw = _patch_existing_cell(raw, address, amount)
             staged[part] = raw
 
+    inputs.verify()
     dest.parent.mkdir(parents=True, exist_ok=True)
     handle, staged_path = tempfile.mkstemp(prefix="workbook_checked_", suffix=".xlsx", dir=dest.parent)
     os.close(handle)
@@ -124,9 +132,16 @@ def populate(template: str, layout: str, values: str, output: str,
         after = review(template, layout, values, filled=staged_path, controls=controls)
         if after["status"] != "PASS":
             raise ValueError("Post-write verification BLOCKED: " + json.dumps(after["errors"]))
-        if dest.exists():
-            raise FileExistsError("Output became occupied during validation")
-        os.replace(staged_path, dest)
+        # Recheck every consumed file after validation and immediately before
+        # publication, including any caller's entity/source-approval pins.
+        if before_release is not None:
+            before_release()
+        inputs.verify()
+        # Both paths are on the same filesystem. A hard link creates the
+        # complete verified file atomically but *never* replaces an existing
+        # destination, unlike os.replace on POSIX. Unsupported filesystems
+        # fail closed; the staged copy is removed by finally.
+        os.link(staged_path, dest)
         return {
             "status": "PASS", "mode": "checked-copy-write",
             "field_count": len(val_rows),
@@ -150,9 +165,31 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--controls")
     parser.add_argument("--report", help="Optional private local report")
+    parser.add_argument("--entity-schema-profile", required=True,
+                        help="Private reviewed schema for this exact native workbook")
+    parser.add_argument("--entity-key", required=True)
+    parser.add_argument("--assessment-year", required=True)
+    parser.add_argument("--itr-form", required=True)
     args = parser.parse_args()
+    def schema_check():
+        require_approved_entity_schema(
+            template=args.template, layout=args.layout,
+            profile_path=args.entity_schema_profile,
+            expected_entity_key=args.entity_key,
+            expected_assessment_year=args.assessment_year,
+            expected_itr_form=args.itr_form,
+        )
+
+    schema_check()
+    inputs = BuildInputGuard((args.template, args.layout, args.values,
+                             args.controls, args.entity_schema_profile))
+
+    def before_release():
+        schema_check()
+        inputs.verify()
+
     result = populate(args.template, args.layout, args.values, args.output,
-                      controls=args.controls)
+                      controls=args.controls, before_release=before_release)
     if args.report:
         Path(args.report).write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
