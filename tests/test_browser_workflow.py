@@ -275,6 +275,60 @@ class BrowserWorkflowTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(self.template.read_bytes()==b"")
 
+    def _review_all_synthetic_entries(self):
+        self.w.extract()
+        destinations={"Cash":"B-CASH","Loans":"B-LOAN",
+                      "Audit expenses":"P-AUDIT","Registration costs":"P-OTHER"}
+        for row in self.w.data()["entries"]:
+            self.w.approve({"source_id":row["source_id"],
+                            "field_id":destinations[row["caption"]]})
+
+    def test_changed_same_path_financials_invalidate_saved_approval(self):
+        """A reused filename does not make an altered source approved."""
+        self._review_all_synthetic_entries()
+        self.assertEqual(self.w.save_review()["result"]["status"],"PASS")
+        make_xlsx(self.fs,{
+            1:{"A":"Statement 2026"},2:{"A":"Cash","C":101,"D":95},
+            3:{"A":"Loans","C":100,"D":110},
+            4:{"A":"Audit expenses","C":90,"D":85},
+            5:{"A":"Registration costs","C":30,"D":25},
+        })
+        with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+            self.w.build()
+        self.assertIsNone(self.w.review)
+        self.assertIsNone(self.w.latest_saved)
+        self.assertFalse(self.output.exists())
+
+    def test_changed_same_path_layout_blocks_review_export(self):
+        self._review_all_synthetic_entries()
+        with self.layout.open("a",encoding="utf-8") as stream:
+            stream.write("\n")
+        with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+            self.w.save_review()
+        self.assertIsNone(self.w.review)
+
+    def test_identical_same_path_bytes_remain_eligible(self):
+        self._review_all_synthetic_entries()
+        content=self.fs.read_bytes()
+        self.fs.write_bytes(content)
+        self.assertEqual(self.w.save_review()["result"]["status"],"PASS")
+        self.assertEqual(self.w.build()["result"]["status"],"PASS")
+
+    def test_missing_reviewed_input_never_builds(self):
+        self._review_all_synthetic_entries()
+        self.w.save_review()
+        self.fs.unlink()
+        with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+            self.w.build()
+        self.assertFalse(self.output.exists())
+
+    def test_switching_previous_target_invalidates_existing_review(self):
+        self._review_all_synthetic_entries()
+        self.assertIsNotNone(self.w.review)
+        self.w.set_config({"previous_target":str(self.root/"new_reference.xlsx")})
+        self.assertIsNone(self.w.review)
+        self.assertIsNone(self.w._review_input_sha256)
+
 
 if __name__=="__main__":
     unittest.main()
