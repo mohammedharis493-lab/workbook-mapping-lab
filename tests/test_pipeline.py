@@ -1,13 +1,17 @@
 """End-to-end examples use made-up values and ephemeral blank templates."""
 import json
+import hashlib
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from test_simulator import xlsx, write_csv
-from workbook_mapping_lab.pipeline import controlled_build
+from workbook_mapping_lab.pipeline import controlled_build, main as pipeline_main
 from workbook_mapping_lab.simulator import WorkbookSnapshot
 
 
@@ -107,6 +111,52 @@ class PipelineTests(unittest.TestCase):
         result=self.build()
         self.assertEqual(result["status"],"BLOCKED")
         self.assertFalse(self.output.exists())
+
+    def secure_cli_args(self):
+        schema=self.root/"private_entity_schema.json"
+        schema.write_text(json.dumps({
+            "version":1,"entity_key":"synthetic-entity",
+            "assessment_year":"2026-27","itr_form":"ITR-6",
+            "template_sha256":hashlib.sha256(self.template.read_bytes()).hexdigest(),
+            "fields":[{
+                "field_id":fid,"section":section,"sheet":sheet,"caption":caption,
+                "anchor_column":"A","amount_column":"B","applicability":"required",
+            } for fid,section,sheet,cell,anchor,caption in self.layout_rows],
+        }),encoding="utf-8")
+        return ["pipeline",
+            "--source",str(self.source),"--rules",str(self.rules),
+            "--layout",str(self.layout),"--template",str(self.template),
+            "--source-controls",str(self.source_controls),
+            "--output-controls",str(self.output_controls),
+            "--output",str(self.output),"--exception-report",str(self.report),
+            "--entity-schema-profile",str(schema),
+            "--entity-key","synthetic-entity", "--assessment-year","2026-27",
+            "--itr-form","ITR-6",
+        ]
+
+    def test_cli_build_requires_explicit_entity_schema(self):
+        args=self.secure_cli_args()
+        with patch.object(sys,"argv",args[:-8]):
+            with redirect_stderr(io.StringIO()),self.assertRaises(SystemExit) as error:
+                pipeline_main()
+        self.assertEqual(error.exception.code,2)
+        self.assertFalse(self.output.exists())
+
+    def test_cli_build_uses_private_schema_preflight(self):
+        with patch.object(sys,"argv",self.secure_cli_args()):
+            with redirect_stdout(io.StringIO()):
+                pipeline_main()
+        self.assertTrue(self.output.exists())
+        self.assertTrue(self.report.exists())
+
+    def test_cli_cross_entity_profile_fails_before_any_output(self):
+        args=self.secure_cli_args()
+        args[args.index("--entity-key")+1]="another-entity"
+        with patch.object(sys,"argv",args):
+            with self.assertRaisesRegex(ValueError,"IDENTITY_OR_YEAR_MISMATCH"):
+                pipeline_main()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.report.exists())
 
 
 if __name__ == "__main__":
