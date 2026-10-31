@@ -60,7 +60,7 @@ PR merging nor a passing unit suite marks M5.1 complete.
 
 ## M5.1b — GitHub-hosted synthetic browser rendering (planned test)
 
-`tests/browser_review_smoke.mjs` launches the project's original loopback-only
+`tests/browser_review_smoke.js` launches the project's original loopback-only
 HTTP server inside a GitHub-hosted Ubuntu runner. Its API state is replaced
 with an **invented** warning and mapping row; no actual FS, vendor export,
 private profile, credentials or local machine paths enter the runner.

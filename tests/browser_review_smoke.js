@@ -2,11 +2,12 @@
  * GitHub-hosted synthetic browser check for the local Winman review interface.
  * No real FS, Winman export, credentials, private paths or client values.
  */
-import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+const assert = require('node:assert/strict');
+const { spawn } = require('node:child_process');
+const { mkdir } = require('node:fs/promises');
+const { chromium } = require('playwright');
 
+(async () => {
 const pretendSourceId = 'SYNTHETIC:BS-A:42';
 const fixture = {
   config: {},
@@ -154,3 +155,4 @@ try {
   if (browser) await browser.close();
   worker.kill('SIGTERM');
 }
+})().catch(err => { console.error(err); process.exitCode = 1; });
