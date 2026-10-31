@@ -12,6 +12,8 @@ from test_simulator import xlsx, write_csv
 from test_manual_benchmark import native
 from workbook_mapping_lab.review_browser import Workspace
 from workbook_mapping_lab.simulator import WorkbookSnapshot
+from workbook_mapping_lab.writer import _patch_existing_cell
+from unittest.mock import patch
 
 
 class BrowserWorkflowTests(unittest.TestCase):
@@ -274,6 +276,110 @@ class BrowserWorkflowTests(unittest.TestCase):
             self.w.build()
         self.assertFalse(self.output.exists())
         self.assertFalse(self.template.read_bytes()==b"")
+
+    def _review_all_synthetic_entries(self):
+        self.w.extract()
+        destinations={"Cash":"B-CASH","Loans":"B-LOAN",
+                      "Audit expenses":"P-AUDIT","Registration costs":"P-OTHER"}
+        for row in self.w.data()["entries"]:
+            self.w.approve({"source_id":row["source_id"],
+                            "field_id":destinations[row["caption"]]})
+
+    def test_changed_same_path_financials_invalidate_saved_approval(self):
+        """A reused filename does not make an altered source approved."""
+        self._review_all_synthetic_entries()
+        self.assertEqual(self.w.save_review()["result"]["status"],"PASS")
+        make_xlsx(self.fs,{
+            1:{"A":"Statement 2026"},2:{"A":"Cash","C":101,"D":95},
+            3:{"A":"Loans","C":100,"D":110},
+            4:{"A":"Audit expenses","C":90,"D":85},
+            5:{"A":"Registration costs","C":30,"D":25},
+        })
+        with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+            self.w.build()
+        self.assertIsNone(self.w.review)
+        self.assertIsNone(self.w.latest_saved)
+        self.assertFalse(self.output.exists())
+
+    def test_changed_same_path_layout_blocks_review_export(self):
+        self._review_all_synthetic_entries()
+        with self.layout.open("a",encoding="utf-8") as stream:
+            stream.write("\n")
+        with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+            self.w.save_review()
+        self.assertIsNone(self.w.review)
+
+    def test_identical_same_path_bytes_remain_eligible(self):
+        self._review_all_synthetic_entries()
+        content=self.fs.read_bytes()
+        self.fs.write_bytes(content)
+        self.assertEqual(self.w.save_review()["result"]["status"],"PASS")
+        self.assertEqual(self.w.build()["result"]["status"],"PASS")
+
+    def test_missing_reviewed_input_never_builds(self):
+        self._review_all_synthetic_entries()
+        self.w.save_review()
+        self.fs.unlink()
+        with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+            self.w.build()
+        self.assertFalse(self.output.exists())
+
+    def test_switching_previous_target_invalidates_existing_review(self):
+        self._review_all_synthetic_entries()
+        self.assertIsNotNone(self.w.review)
+        self.w.set_config({"previous_target":str(self.root/"new_reference.xlsx")})
+        self.assertIsNone(self.w.review)
+        self.assertIsNone(self.w._review_input_sha256)
+
+    def test_combined_source_and_entity_preflights_block_until_separately_resolved(self):
+        """Both PR12 and PR13 protections apply to the same browser build."""
+        original_fs = self.fs.read_bytes()
+        original_schema = self.entity_manifest.read_text(encoding="utf-8")
+        self._review_all_synthetic_entries()
+        self.assertEqual(self.w.save_review()["result"]["status"], "PASS")
+
+        # Both protections fail: the source is stale and the schema is for
+        # another assessment year. Stale financial evidence blocks first.
+        self.fs.write_bytes(original_fs + b"\n")
+        profile = json.loads(original_schema)
+        profile["assessment_year"] = "2027-28"
+        self.entity_manifest.write_text(json.dumps(profile), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "REVIEW_INPUT_CHANGED"):
+            self.w.build()
+        self.assertIsNone(self.w.review)
+        self.assertIsNone(self.w.latest_saved)
+        self.assertFalse(self.output.exists())
+
+        # Restore the source and explicitly redo review. The mismatched
+        # entity-specific schema must independently block the same build.
+        self.fs.write_bytes(original_fs)
+        self._review_all_synthetic_entries()
+        self.assertEqual(self.w.save_review()["result"]["status"], "PASS")
+        with self.assertRaisesRegex(ValueError, "IDENTITY_OR_YEAR_MISMATCH"):
+            self.w.build()
+        self.assertFalse(self.output.exists())
+
+        # Only after both review evidence and schema are valid can the checked
+        # copy be produced, leaving the original native export untouched.
+        original_template = self.template.read_bytes()
+        self.entity_manifest.write_text(original_schema, encoding="utf-8")
+        self.assertEqual(self.w.build()["result"]["status"], "PASS")
+        self.assertEqual(self.template.read_bytes(), original_template)
+
+    def test_browser_detects_source_change_during_checked_copy_build(self):
+        self._review_all_synthetic_entries()
+        self.assertEqual(self.w.save_review()["result"]["status"], "PASS")
+
+        def mutate_source_during_patch(raw,address,amount):
+            self.fs.write_bytes(self.fs.read_bytes()+b"\n")
+            return _patch_existing_cell(raw,address,amount)
+
+        with patch("workbook_mapping_lab.writer._patch_existing_cell",
+                   side_effect=mutate_source_during_patch):
+            with self.assertRaisesRegex(ValueError,"REVIEW_INPUT_CHANGED"):
+                self.w.build()
+        self.assertIsNone(self.w.latest_saved)
+        self.assertFalse(self.output.exists())
 
 
 if __name__=="__main__":

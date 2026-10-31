@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import subprocess
@@ -32,7 +33,9 @@ from .template_contract import detail_coverage
 from .manual_benchmark import compare_completed_return
 from .import_intake import inspect_native_import_coverage
 from .export_preflight import preflight_export
-from .entity_schema import load_entity_profile, inspect_entity_profile
+from .entity_schema import (load_entity_profile, inspect_entity_profile,
+                            require_approved_entity_schema)
+from .build_integrity import BuildInputGuard
 from .schema_discovery import (discover_entity_fields, set_candidate_decision,
                                reviewed_profile, save_private_profile)
 from .warning_journal import save_journal, load_journal, reviewed_identity
@@ -45,6 +48,9 @@ CONFIG_KEYS = frozenset((
     "entity_schema_profile", "entity_key", "assessment_year", "itr_form",
     "intake_template",
 ))
+REVIEW_INPUT_KEYS = (
+    "source", "previous", "profile", "layout", "prior_rules", "previous_target",
+)
 STATIC = {
     "/": ("review_browser.html", "text/html; charset=utf-8"),
     "/app.css": ("review_browser.css", "text/css; charset=utf-8"),
@@ -74,6 +80,7 @@ class Workspace:
         self.latest_entity_schema: dict | None = None
         self.latest_import_intake: dict | None = None
         self.entity_discovery: dict | None = None
+        self._review_input_sha256: dict[str, str] | None = None
         self.profile = None
         self.lock = threading.RLock()
 
@@ -113,12 +120,11 @@ class Workspace:
         changed = {key for key, value in updates.items()
                    if self.config[key] != value.strip()}
         self.config.update({key: value.strip() for key, value in updates.items()})
-        if changed.intersection({
-            "source", "previous", "profile", "layout", "prior_rules", "previous_target"
-        }):
+        if changed.intersection(REVIEW_INPUT_KEYS):
             self.review = None
             self.profile = None
             self.issues = []
+            self._review_input_sha256 = None
         if changed.intersection({
             "source", "previous", "previous_target", "advisory_rules",
             "entity_key", "assessment_year", "itr_form"
@@ -137,6 +143,37 @@ class Workspace:
             self.latest_entity_schema = None
             self.latest_import_intake = None
         return self.data()
+
+    def _hash_review_inputs(self) -> dict[str, str]:
+        """Bind approvals to file *contents*, not reusable file paths."""
+        hashes = {}
+        for key in REVIEW_INPUT_KEYS:
+            selected = self.file(key, False)
+            if not selected:
+                hashes[key] = ""
+                continue
+            digest = hashlib.sha256()
+            with open(selected, "rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            hashes[key] = digest.hexdigest()
+        return hashes
+
+    def _require_fresh_review_inputs(self) -> None:
+        if self._review_input_sha256 is None:
+            raise ValueError("REVIEW_INPUTS_NOT_EXTRACTED: extract current files first")
+        try:
+            current = self._hash_review_inputs()
+        except OSError:
+            current = None
+        if current != self._review_input_sha256:
+            self.review = None
+            self.latest_saved = None
+            self._review_input_sha256 = None
+            raise ValueError(
+                "REVIEW_INPUT_CHANGED: source or layout contents changed; "
+                "re-extract and reapprove before building"
+            )
 
     def refresh_warnings(self) -> dict:
         try:
@@ -178,6 +215,7 @@ class Workspace:
         return self.data()
 
     def extract(self) -> dict:
+        pinned_inputs = self._hash_review_inputs()
         profile = load_profile(self.file("profile"))
         fields = load_csv(self.file("layout"),
                           ("field_id", "section", "sheet", "cell",
@@ -209,6 +247,15 @@ class Workspace:
                                     suggestions=proposals)
         self.latest_saved = None
         self.refresh_warnings()
+        try:
+            unchanged = self._hash_review_inputs() == pinned_inputs
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            self.review = None
+            self._review_input_sha256 = None
+            raise ValueError("REVIEW_INPUT_CHANGED_DURING_EXTRACTION: re-extract")
+        self._review_input_sha256 = pinned_inputs
         return self.data()
 
     def approve(self, args: dict) -> dict:
@@ -285,6 +332,7 @@ class Workspace:
     def save_review(self) -> dict:
         if not self.review:
             raise ValueError("Extract financial statements before saving")
+        self._require_fresh_review_inputs()
         prefix = "browser_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         self.latest_saved = self.review.save_review(self.file("folder"), prefix=prefix)
         return {"result": self.latest_saved, **self.data()}
@@ -428,37 +476,34 @@ class Workspace:
         return self.data()
 
     def _require_entity_schema_for_build(self) -> None:
-        # Re-evaluate on each build, not just when a previous browser tab
-        # claims success: the template, profile or approved layout may change.
-        self.check_entity_schema()
-        result = self.latest_entity_schema
-        if result["status"] != "READY_FOR_MAPPING_REVIEW":
-            raise ValueError("ENTITY_SCHEMA_NOT_READY: " + result["status"])
-        approved = load_csv(self.file("layout"),
-            ("field_id","section","sheet","cell","anchor_cell","anchor_text"))
-        actual = {f["field_id"]: f for f in result["candidate_layout"]}
-        missing_required = {f["field_id"] for f in load_entity_profile(self.file("entity_schema_profile"))["fields"] if f["applicability"] == "required"} - {f["field_id"] for f in approved}
-        if missing_required:
-            raise ValueError("ENTITY_SCHEMA_REQUIRED_FIELDS_NOT_MAPPED: " + ",".join(sorted(missing_required)))
-        seen = set()
-        for field in approved:
-            fid = field["field_id"]
-            if fid in seen or fid not in actual:
-                raise ValueError("ENTITY_SCHEMA_FIELD_NOT_APPROVED: " + fid)
-            seen.add(fid)
-            expected = actual[fid]
-            for key in ("sheet", "cell", "section", "anchor_cell"):
-                if field[key] != expected[key]:
-                    raise ValueError("ENTITY_SCHEMA_LAYOUT_MISMATCH: " + fid)
-            if field["anchor_text"].strip().casefold() != expected["anchor_text"].strip().casefold():
-                raise ValueError("ENTITY_SCHEMA_CAPTION_MISMATCH: " + fid)
+        # Re-evaluate the exact template, profile and approved layout on build.
+        self.latest_entity_schema = require_approved_entity_schema(
+            template=self.file("template"), layout=self.file("layout"),
+            profile_path=self.file("entity_schema_profile"),
+            expected_entity_key=self.file("entity_key"),
+            expected_assessment_year=self.file("assessment_year"),
+            expected_itr_form=self.file("itr_form"),
+        )
 
     def build(self) -> dict:
         if not self.review or self.review.unresolved():
             raise ValueError("All source classifications require approval before building")
         if not self.latest_saved or self.latest_saved["status"] != "PASS":
             raise ValueError("Export a PASS mapping review before building")
+        self._require_fresh_review_inputs()
         self._require_entity_schema_for_build()
+        inputs = BuildInputGuard(
+            [self.file(key, False) for key in (
+                *REVIEW_INPUT_KEYS, "template", "entity_schema_profile",
+                "source_controls", "output_controls", "companion_details",
+            )] + [self.latest_saved["sources"], self.latest_saved["rules"]]
+        )
+
+        def before_release():
+            self._require_fresh_review_inputs()
+            self._require_entity_schema_for_build()
+            inputs.verify()
+
         report = self._new_file("browser_build_exceptions_PRIVATE_", ".json")
         result = controlled_build(
             source=self.latest_saved["sources"],
@@ -472,6 +517,7 @@ class Workspace:
             rounding="whole_rupees",
             previous_export=self.file("previous_target", False) or None,
             companion_details=self.file("companion_details", False) or None,
+            before_release=before_release,
         )
         return {"result": result, "report": str(report), **self.data()}
 

@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 from .layout_resolver import resolve_layout
+from .mapping import load_csv
 from .simulator import WorkbookSnapshot
 
 APPLICABILITY = frozenset(("required", "optional", "not_applicable", "review"))
@@ -132,6 +133,57 @@ def inspect_entity_profile(
             "Do not assume another entity's assets, liabilities or subcomponents."
         ),
     }
+
+
+def require_approved_entity_schema(
+    *, template: str, layout: str, profile_path: str,
+    expected_entity_key: str, expected_assessment_year: str,
+    expected_itr_form: str,
+) -> dict:
+    """Common fail-closed release gate for all user-facing workbook builds.
+
+    A valid private schema alone is not enough: the approved output layout
+    must match each resolved native location, caption and statement section.
+    No workbook is modified by this check.
+    """
+    profile = load_entity_profile(profile_path)
+    result = inspect_entity_profile(
+        template, profile,
+        expected_entity_key=expected_entity_key,
+        expected_assessment_year=expected_assessment_year,
+        expected_itr_form=expected_itr_form,
+    )
+    if result["status"] != "READY_FOR_MAPPING_REVIEW":
+        raise ValueError("ENTITY_SCHEMA_NOT_READY: " + result["status"])
+
+    approved = load_csv(layout, (
+        "field_id", "section", "sheet", "cell", "anchor_cell", "anchor_text",
+    ))
+    actual = {item["field_id"]: item for item in result["candidate_layout"]}
+    required_ids = {
+        item["field_id"] for item in profile["fields"]
+        if item["applicability"] == "required"
+    }
+    approved_ids = {item["field_id"] for item in approved}
+    missing = required_ids - approved_ids
+    if missing:
+        raise ValueError(
+            "ENTITY_SCHEMA_REQUIRED_FIELDS_NOT_MAPPED: " + ",".join(sorted(missing))
+        )
+
+    seen = set()
+    for field in approved:
+        fid = field["field_id"]
+        if fid in seen or fid not in actual:
+            raise ValueError("ENTITY_SCHEMA_FIELD_NOT_APPROVED: " + fid)
+        seen.add(fid)
+        expected = actual[fid]
+        for key in ("sheet", "cell", "section", "anchor_cell"):
+            if field[key] != expected[key]:
+                raise ValueError("ENTITY_SCHEMA_LAYOUT_MISMATCH: " + fid)
+        if field["anchor_text"].strip().casefold() != expected["anchor_text"].strip().casefold():
+            raise ValueError("ENTITY_SCHEMA_CAPTION_MISMATCH: " + fid)
+    return result
 
 
 def main() -> None:

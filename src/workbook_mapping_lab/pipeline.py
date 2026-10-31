@@ -11,12 +11,15 @@ import json
 from collections import defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
+from typing import Callable
 
+from .build_integrity import BuildInputGuard
 from .allocations import number, plan_allocations, ready_to_release
 from .mapping import load_csv
 from .writer import populate
 from .template_contract import detail_coverage
 from .detail_companions import add_companion_fields
+from .entity_schema import require_approved_entity_schema
 
 
 def _csv(path: str, columns: tuple[str, ...], rows: list[dict]) -> None:
@@ -34,6 +37,7 @@ def controlled_build(
     exception_report: str, rounding: str = "exact",
     previous_export: str | None = None,
     companion_details: str | None = None,
+    before_release: Callable[[], None] | None = None,
 ) -> dict:
     """Create the final workbook only after all mapping and control checks pass.
 
@@ -108,7 +112,9 @@ def controlled_build(
                            "detail":f"assets={output_sections['BS-A']} liabilities={output_sections['BS-L']}"})
 
     report = {
-        "status":"PASS" if ready_to_release(issues) else "BLOCKED",
+        # Mapping validation alone does not mean a checked copy was released.
+        # Never persist PASS until the writer has published successfully.
+        "status":"VALIDATED_NOT_RELEASED" if ready_to_release(issues) else "BLOCKED",
         "source_row_count":len(inputs),
         "approved_mapping_count":sum(1 for x in mappings if x.get("approved","").lower().strip() in ("yes","true","1")),
         "mapped_field_count":len(safe_out),
@@ -128,12 +134,41 @@ def controlled_build(
     # Stage private CSVs next to report; never publish mapped values or controls.
     # Reuse an unused output path and remove temporary intermediates afterward.
     import tempfile
-    with tempfile.TemporaryDirectory(prefix="mapping_private_", dir=report_path.parent) as work:
-        values_csv=Path(work)/"approved_values.csv"
-        controls_csv=Path(work)/"output_controls.csv"
-        _csv(str(values_csv),("field_id","section","amount"),safe_out)
-        _csv(str(controls_csv),("section","total"),required_output_totals)
-        result=populate(template, layout, str(values_csv), output, controls=str(controls_csv))
+    result=None
+    try:
+        with tempfile.TemporaryDirectory(prefix="mapping_private_", dir=report_path.parent) as work:
+            values_csv=Path(work)/"approved_values.csv"
+            controls_csv=Path(work)/"output_controls.csv"
+            _csv(str(values_csv),("field_id","section","amount"),safe_out)
+            _csv(str(controls_csv),("section","total"),required_output_totals)
+            result=populate(template, layout, str(values_csv), output,
+                            controls=str(controls_csv), before_release=before_release)
+    except Exception as error:
+        if result is not None:
+            # Publication succeeded, but cleanup of private staging files
+            # failed afterward. The copy exists: never misreport its release.
+            report["writer"]=result
+            report["status"]=result["status"]
+            report["post_release_warning"]=(
+                "Checked copy was released, but cleanup of private staging "
+                "files may be incomplete; inspect the private working folder."
+            )
+            report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            raise
+        # Preserve the caller's exception semantics while leaving trustworthy
+        # private audit evidence. Never record raw exception text/client paths.
+        reason=str(error).split(":",1)[0]
+        issue = (reason if reason in ("BUILD_INPUT_CHANGED", "REVIEW_INPUT_CHANGED",
+                                     "REVIEW_INPUTS_NOT_EXTRACTED")
+                 else "OUTPUT_ALREADY_EXISTS" if isinstance(error, FileExistsError)
+                 else "CHECKED_COPY_RELEASE_FAILED")
+        report["status"]="BLOCKED"
+        report["exceptions"].append({
+            "issue":issue,"source_id":"","field_id":"",
+            "detail":"A verified checked copy was not successfully released; investigate before retrying.",
+        })
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        raise
     report["writer"]=result
     report["status"]=result["status"]
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -147,12 +182,36 @@ def main() -> None:
     p.add_argument("--rounding",choices=("exact","whole_rupees"),default="exact")
     p.add_argument("--previous-export",help="Optional historical populated vendor export used to block missing detail schedules")
     p.add_argument("--companion-details",help="Private parent-to-child field amounts; child totals must reconcile")
+    p.add_argument("--entity-schema-profile",required=True,
+                   help="Private reviewed schema for this exact native export")
+    p.add_argument("--entity-key",required=True,
+                   help="Explicit identity of this entity; not inferred from a prior client")
+    p.add_argument("--assessment-year",required=True)
+    p.add_argument("--itr-form",required=True)
     a=p.parse_args()
+    def schema_check():
+        require_approved_entity_schema(
+            template=a.template, layout=a.layout, profile_path=a.entity_schema_profile,
+            expected_entity_key=a.entity_key,
+            expected_assessment_year=a.assessment_year,
+            expected_itr_form=a.itr_form,
+        )
+
+    schema_check()
+    inputs=BuildInputGuard((a.source,a.rules,a.layout,a.template,
+                            a.source_controls,a.output_controls,a.previous_export,
+                            a.companion_details,a.entity_schema_profile))
+
+    def before_release():
+        schema_check()
+        inputs.verify()
+
     report=controlled_build(
         source=a.source, rules=a.rules,layout=a.layout,template=a.template,
         source_controls=a.source_controls,output_controls=a.output_controls,
         output=a.output,exception_report=a.exception_report,rounding=a.rounding,
-        previous_export=a.previous_export,companion_details=a.companion_details)
+        previous_export=a.previous_export,companion_details=a.companion_details,
+        before_release=before_release)
     print(json.dumps({k:v for k,v in report.items() if k not in ("trace","rounding_differences")},indent=2))
     if report["status"]!="PASS":
         raise SystemExit(2)

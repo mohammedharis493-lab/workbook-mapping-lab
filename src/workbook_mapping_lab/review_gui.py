@@ -22,6 +22,13 @@ from .template_contract import detail_coverage
 from .advisories import (check_advisories, advisory, evaluate_evidence_rules,
                          load_evidence_rules, evidence_digest, warning_review_key)
 from .layout_resolver import resolve_layout, merge_approved_routes, write_private_layout
+from .entity_schema import require_approved_entity_schema
+from .build_integrity import BuildInputGuard
+
+
+REVIEW_INPUT_KEYS = (
+    "source", "previous", "profile", "layout", "prior_rules", "previous_target",
+)
 
 
 class ReviewDesk(tk.Tk):
@@ -33,6 +40,8 @@ class ReviewDesk(tk.Tk):
         self.profile = None
         self.review = None
         self.latest_saved = None
+        self._review_input_paths = None
+        self._review_input_guard = None
         self.extraction_issues = []
         self.advisory_items = []
         self.advisory_decisions = {}
@@ -40,7 +49,8 @@ class ReviewDesk(tk.Tk):
         self.variables = {
             key:tk.StringVar() for key in (
                 "source","previous","profile","layout","prior_rules","previous_target",
-                "folder","source_controls","output_controls","template","output","detail_routes","companion_details","advisory_rules"
+                "folder","source_controls","output_controls","template","output","detail_routes","companion_details","advisory_rules",
+                "entity_schema_profile","entity_key","assessment_year","itr_form",
             )
         }
         self.section=tk.StringVar(value="BS-A")
@@ -70,7 +80,7 @@ class ReviewDesk(tk.Tk):
                     defaultextension=".xlsx",filetypes=[("Excel workbook","*.xlsx")])
             elif key in ("layout","prior_rules","source_controls","output_controls","detail_routes","companion_details","advisory_rules"):
                 p=filedialog.askopenfilename(filetypes=[("CSV files","*.csv"),("All files","*.*")])
-            elif key=="profile":
+            elif key in ("profile", "entity_schema_profile"):
                 p=filedialog.askopenfilename(filetypes=[("Profile JSON","*.json")])
             else:
                 p=filedialog.askopenfilename(filetypes=[("Excel workbook","*.xlsx"),("All files","*.*")])
@@ -81,6 +91,11 @@ class ReviewDesk(tk.Tk):
                     self.latest_saved=None
         ttk.Button(parent,text="Browse",command=browse,width=10).grid(row=row,column=2,padx=4)
         return entry
+
+    def _text_row(self, parent, label, key, row):
+        ttk.Label(parent,text=label).grid(row=row,column=0,sticky="w",padx=5,pady=4)
+        ttk.Entry(parent,textvariable=self.variables[key],width=90).grid(
+            row=row,column=1,sticky="ew",padx=5)
 
     def _make_widgets(self):
         padding={"padx":11,"pady":6}
@@ -195,16 +210,23 @@ class ReviewDesk(tk.Tk):
         task=ttk.LabelFrame(build,text="Only after every extracted item is reviewed")
         task.pack(fill="x",padx=10,pady=12)
         task.columnconfigure(1,weight=1)
-        for i,(label,key,kind) in enumerate([
-            ("Original blank destination template","template","file"),
-            ("Independent source section totals","source_controls","file"),
-            ("Independent expected output totals","output_controls","file"),
-            ("Approved parent-child detail amounts (optional)","companion_details","file"),
-            ("New checked-copy output filename","output","save"),
-        ]):
-            self._path_row(task,label,key,kind,i)
+        for row,label,key,kind in (
+            (0,"Original blank destination template","template","file"),
+            (1,"Reviewed entity-specific ITR schema (.json)","entity_schema_profile","file"),
+            (5,"Independent source section totals","source_controls","file"),
+            (6,"Independent expected output totals","output_controls","file"),
+            (7,"Approved parent-child detail amounts (optional)","companion_details","file"),
+            (8,"New checked-copy output filename","output","save"),
+        ):
+            self._path_row(task,label,key,kind,row)
+        for row,label,key in (
+            (2,"Entity identity","entity_key"),
+            (3,"Assessment year (e.g. 2026-27)","assessment_year"),
+            (4,"ITR form (e.g. ITR-6)","itr_form"),
+        ):
+            self._text_row(task,label,key,row)
         ttk.Button(task,text="Build and verify checked copy",command=self.build_copy).grid(
-            row=5,column=1,sticky="e",padx=10,pady=15)
+            row=9,column=1,sticky="e",padx=10,pady=15)
         ttk.Label(build,text="This does not submit to any external application. Use an unused output filename.").pack(
             anchor="w",padx=20)
 
@@ -222,6 +244,25 @@ class ReviewDesk(tk.Tk):
         if not val and required:
             raise ValueError(f"Select {key.replace('_',' ')}")
         return val
+
+    def _require_fresh_review_inputs(self):
+        """Require exactly the files and contents used for this approval."""
+        if self._review_input_guard is None or self._review_input_paths is None:
+            raise ValueError("REVIEW_INPUTS_NOT_EXTRACTED: extract current files first")
+        try:
+            current={key:self._file(key,False) for key in REVIEW_INPUT_KEYS}
+            if current != self._review_input_paths:
+                raise ValueError("Changed file selection")
+            self._review_input_guard.verify()
+        except (OSError,ValueError):
+            self.review=None
+            self.latest_saved=None
+            self._review_input_paths=None
+            self._review_input_guard=None
+            raise ValueError(
+                "REVIEW_INPUT_CHANGED: source or layout contents changed; "
+                "re-extract and reapprove before building"
+            ) from None
 
     def _warning_key(self, item):
         return warning_review_key(item, self._warning_evidence_signature)
@@ -363,6 +404,13 @@ class ReviewDesk(tk.Tk):
 
     def load_selected(self):
         try:
+            # Invalidate the prior review even if a new extraction fails.
+            self.review=None
+            self.latest_saved=None
+            self._review_input_paths=None
+            self._review_input_guard=None
+            selected={key:self._file(key,False) for key in REVIEW_INPUT_KEYS}
+            pinned=BuildInputGuard(selected.values())
             source=self._file("source")
             profile=load_profile(self._file("profile"))
             fields=load_csv(self._file("layout"),
@@ -386,9 +434,11 @@ class ReviewDesk(tk.Tk):
                     rows,self._file("previous_target"),fields)
                 if reference_issues:
                     self.status.set(f"Prior destination lookup: {len(reference_issues)} fields unresolved; review manually.")
+            pinned.verify()
             self.extraction_issues=issues
             self.review=ReviewSession(rows,issues,fields,prior,suggestions=proposals)
-            self.latest_saved=None
+            self._review_input_paths=selected
+            self._review_input_guard=pinned
             self._draw_rows()
             self.refresh_warnings()
             suggestion_count=sum(1 for x in self.review.entries.values() if x["review_status"]=="SUGGESTED")
@@ -613,10 +663,30 @@ class ReviewDesk(tk.Tk):
         try:
             if not self.review:
                 raise ValueError("Read profile rows first")
+            self._require_fresh_review_inputs()
             from datetime import datetime
             base_prefix="local_review_"+datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.latest_saved=self.review.save_review(self._file("folder"),
-                prefix=base_prefix)
+            self.latest_saved=None
+            saved=self.review.save_review(self._file("folder"),prefix=base_prefix)
+            try:
+                self._require_fresh_review_inputs()
+            except ValueError:
+                # These exact files were created by this save attempt. An
+                # invalidated review must not leave a private PASS report or
+                # stale approved CSVs that another build entry point could use.
+                failures=[]
+                for key in ("report","sources","rules"):
+                    try:
+                        Path(saved[key]).unlink(missing_ok=True)
+                    except OSError:
+                        failures.append(key)
+                if failures:
+                    raise ValueError(
+                        "REVIEW_EXPORT_INVALIDATION_INCOMPLETE: stale private "
+                        "review files may remain; do not reuse this export"
+                    ) from None
+                raise
+            self.latest_saved=saved
             if self.latest_saved["status"]!="PASS":
                 self.status.set("Review exported privately, but BUILD BLOCKED: outstanding exceptions.")
                 messagebox.showwarning("Outstanding decisions",
@@ -633,10 +703,35 @@ class ReviewDesk(tk.Tk):
                 raise ValueError("Resolve all selected-source mapping decisions first")
             if not self.latest_saved or self.latest_saved["status"]!="PASS":
                 raise ValueError("Export a PASS private review before building")
+            self._require_fresh_review_inputs()
+            def schema_check():
+                require_approved_entity_schema(
+                    template=self._file("template"), layout=self._file("layout"),
+                    profile_path=self._file("entity_schema_profile"),
+                    expected_entity_key=self._file("entity_key"),
+                    expected_assessment_year=self._file("assessment_year"),
+                    expected_itr_form=self._file("itr_form"),
+                )
+
+            schema_check()
             if not messagebox.askyesno("Build workbook copy",
                   "Generate a new test-only XLSX using the reviewed rules and independent totals?\n"
                   "The original template will remain unchanged.",parent=self):
                 return
+            self._require_fresh_review_inputs()
+            inputs = BuildInputGuard(
+                [self._file(key, False) for key in (
+                    "source", "previous", "profile", "prior_rules", "layout",
+                    "template", "previous_target", "entity_schema_profile",
+                    "source_controls", "output_controls", "companion_details",
+                )] + [self.latest_saved["sources"], self.latest_saved["rules"]]
+            )
+
+            def before_release():
+                self._require_fresh_review_inputs()
+                schema_check()
+                inputs.verify()
+
             result=controlled_build(
                 source=self.latest_saved["sources"],rules=self.latest_saved["rules"],
                 layout=self._file("layout"),template=self._file("template"),
@@ -647,7 +742,7 @@ class ReviewDesk(tk.Tk):
                 companion_details=self._file("companion_details",False) or None,
                 exception_report=str(require_private_directory(self._file("folder"))/
                                      "build_result_private.json"),
-                rounding="whole_rupees")
+                rounding="whole_rupees", before_release=before_release)
             if result["status"]=="PASS":
                 self.status.set("Checked workbook copy created and independently verified. External import not tested.")
                 messagebox.showinfo("Checked copy created",

@@ -42,10 +42,15 @@ Keep every actual template, field-layout CSV, source value CSV and output **outs
 
 ```powershell
 $env:PYTHONPATH = "$PWD\src"
-python -m workbook_mapping_lab.writer --template "C:\private\blank.xlsx" --layout "C:\private\layout.csv" --values "C:\private\approved_values.csv" --controls "C:\private\controls.csv" --output "C:\private\checked-copy.xlsx"
+python -m workbook_mapping_lab.writer --template "C:\private\blank.xlsx" --layout "C:\private\layout.csv" --values "C:\private\approved_values.csv" --controls "C:\private\controls.csv" --output "C:\private\checked-copy.xlsx" --entity-schema-profile "C:\private\reviewed-entity-schema.json" --entity-key "verified-entity-key" --assessment-year "2026-27" --itr-form "ITR-6"
 ```
 
-The output location must be unused. The writer refuses source overwrites, nonempty or formula destination cells, changed anchor labels, invalid/missing fields and modified package contents. It does **not** submit any data to external software.
+The output location must be unused. The command additionally requires the
+private entity-specific schema, exact current-year template fingerprint and
+reviewed destination mapping; it refuses cross-entity/AY/form reuse and missing
+required fields before writing. The writer refuses source overwrites, nonempty
+or formula destination cells, changed anchor labels, invalid/missing fields and
+modified package contents. It does **not** submit any data to external software.
 
 See [completed-return verification](docs/COMPLETED_RETURN_BENCHMARK.md), [advisory warnings](docs/WARNINGS.md), [exact vendor export](docs/EXACT_VENDOR_EXPORT.md), [reference benchmark](docs/REFERENCE_BENCHMARK.md), [local review desk](docs/LOCAL_REVIEW.md), [offline simulator](docs/OFFLINE_SIMULATOR.md), and [privacy policy](PRIVACY.md).
 

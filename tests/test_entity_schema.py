@@ -8,8 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from test_layout_resolver import make_vendor
+from test_simulator import write_csv
 from workbook_mapping_lab.entity_schema import (
-    inspect_entity_profile, load_entity_profile
+    inspect_entity_profile, load_entity_profile, require_approved_entity_schema,
 )
 
 
@@ -51,6 +52,68 @@ class EntitySchemaTests(unittest.TestCase):
             str(path), profile, expected_entity_key=entity,
             expected_assessment_year=ay, expected_itr_form="ITR-6",
         )
+
+    def release_check(self, path, profile, rows, *, entity="entity-a"):
+        private=self.root/"reviewed_entity.json"
+        layout=self.root/"approved_layout.csv"
+        private.write_text(json.dumps(profile),encoding="utf-8")
+        write_csv(layout,(
+            "field_id","section","sheet","cell","anchor_cell","anchor_text",
+        ),rows)
+        return require_approved_entity_schema(
+            template=str(path),layout=str(layout),profile_path=str(private),
+            expected_entity_key=entity,expected_assessment_year="2026-27",
+            expected_itr_form="ITR-6",
+        )
+
+    def test_shared_release_gate_accepts_exact_reviewed_native_layout(self):
+        profile=self.profile(self.alpha,"entity-a",[
+            self.field("LOANS","Base","Long-term loans","required"),
+        ])
+        result=self.release_check(self.alpha,profile,[
+            ("LOANS","BS-L","Base","B11","A11","Long-term loans"),
+        ])
+        self.assertEqual(result["status"],"READY_FOR_MAPPING_REVIEW")
+        self.assertEqual(self.alpha.read_bytes(),self.alpha_before)
+
+    def test_shared_release_gate_rejects_required_field_not_in_layout(self):
+        profile=self.profile(self.alpha,"entity-a",[
+            self.field("LOANS","Base","Long-term loans","required"),
+            self.field("RELATED","Related Details","Deposits from related parties","required"),
+        ])
+        with self.assertRaisesRegex(ValueError,"REQUIRED_FIELDS_NOT_MAPPED"):
+            self.release_check(self.alpha,profile,[
+                ("LOANS","BS-L","Base","B11","A11","Long-term loans"),
+            ])
+
+    def test_shared_release_gate_rejects_wrong_cell_or_caption(self):
+        profile=self.profile(self.alpha,"entity-a",[
+            self.field("LOANS","Base","Long-term loans","required"),
+        ])
+        with self.assertRaisesRegex(ValueError,"LAYOUT_MISMATCH"):
+            self.release_check(self.alpha,profile,[
+                ("LOANS","BS-L","Base","B12","A11","Long-term loans"),
+            ])
+        with self.assertRaisesRegex(ValueError,"CAPTION_MISMATCH"):
+            self.release_check(self.alpha,profile,[
+                ("LOANS","BS-L","Base","B11","A11","Different caption"),
+            ])
+
+    def test_shared_release_gate_rejects_cross_entity_profile(self):
+        profile=self.profile(self.alpha,"entity-a",[
+            self.field("LOANS","Base","Long-term loans","required"),
+        ])
+        with self.assertRaisesRegex(ValueError,"IDENTITY_OR_YEAR_MISMATCH"):
+            self.release_check(self.alpha,profile,[
+                ("LOANS","BS-L","Base","B11","A11","Long-term loans"),
+            ],entity="entity-b")
+
+    def test_shared_release_gate_rejects_undecided_applicability(self):
+        profile=self.profile(self.alpha,"entity-a",[
+            self.field("LOANS","Base","Long-term loans","review"),
+        ])
+        with self.assertRaisesRegex(ValueError,"NOT_READY"):
+            self.release_check(self.alpha,profile,[])
 
     def test_two_entities_same_form_and_year_have_different_subcomponents(self):
         alpha_profile=self.profile(self.alpha, "entity-a", [
