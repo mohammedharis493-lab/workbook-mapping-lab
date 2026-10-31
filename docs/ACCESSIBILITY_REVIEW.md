@@ -57,3 +57,24 @@ focused DOM node. A fifth synthetic static contract test guards this path.
 This is a code-level correction, **not** observed browser acceptance. The
 required Chrome keyboard and native 200% zoom review remains open; neither
 PR merging nor a passing unit suite marks M5.1 complete.
+
+## M5.1b — GitHub-hosted synthetic browser rendering (planned test)
+
+`tests/browser_review_smoke.mjs` launches the project's original loopback-only
+HTTP server inside a GitHub-hosted Ubuntu runner. Its API state is replaced
+with an **invented** warning and mapping row; no actual FS, vendor export,
+private profile, credentials or local machine paths enter the runner.
+
+The optional pull-request workflow `.github/workflows/browser-smoke.yml` checks
+keyboard warning focus retention, accessible selected state, visible focus,
+320-CSS-pixel equivalent warning reflow, document-level overflow, and mapped-row
+keyboard selection. It retains only synthetic screenshots for a short review
+period. This is a new automated **rendered** evidence gate, distinct from
+source-level contract tests.
+
+**Limitations:** A narrow 320-CSS-pixel viewport is a reflow proxy, not a proof
+that native branded Chrome zoom was exercised at 200%. Human review of Chrome
+native zoom, keyboard traversal, touch/trackpad interaction and real desktop
+layout remains required before M5.1 is called complete. The initial CI
+outcome is pending; do not claim the browser test passed until GitHub logs are
+read.
