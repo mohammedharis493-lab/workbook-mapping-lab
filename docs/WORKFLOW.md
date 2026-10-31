@@ -4,6 +4,10 @@
 2. Propose mappings using captions, hierarchy, signs, amounts and historical treatment.
 3. Require the reviewer to approve ambiguous or changed mappings.
 4. Apply only approved rules to the current-year source.
+   Before any Chrome, Classic desktop or CLI checked-copy build, verify this
+   entity's privately reviewed schema against its actual current native
+   export and approved destination layout. Do not reuse another entity's
+   profile, and do not guess optional or conditional schedules.
 5. Check target cell coordinates and anchor labels in the original blank template.
 6. Validate formulas, existing values, merged cells, worksheet states and section totals.
 7. Write an **unused separate copy** by replacing approved empty numeric cell XML only.
