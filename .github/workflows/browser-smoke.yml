@@ -1,0 +1,37 @@
+name: Synthetic Chromium review smoke
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/workbook_mapping_lab/review_browser.*'
+      - 'tests/browser_review_smoke.js'
+      - '.github/workflows/browser-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install pinned headless Chromium harness
+        run: |
+          npm install --no-save --no-package-lock --ignore-scripts playwright@1.64.1
+          npx playwright install --with-deps --only-shell chromium
+      - name: Validate local UI using synthetic evidence only
+        run: node tests/browser_review_smoke.js
+      - name: Retain synthetic-only screenshots for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-review-ui
+          path: test-artifacts/*.png
+          if-no-files-found: ignore
+          retention-days: 3

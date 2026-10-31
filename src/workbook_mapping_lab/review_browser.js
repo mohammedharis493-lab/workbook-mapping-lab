@@ -89,6 +89,15 @@ async function syncPaths() {
  const updates=collectPaths();
  if(Object.keys(updates).length){const result=await api('/api/config',updates);state=result;}
 }
+function keepActiveTabVisible() {
+ const rail=document.querySelector('.tabs');
+ const active=rail?.querySelector('.tab.active');
+ if(!active)return;
+ const tabBox=active.getBoundingClientRect();
+ const railBox=rail.getBoundingClientRect();
+ if(tabBox.left<railBox.left)rail.scrollLeft-=railBox.left-tabBox.left;
+ else if(tabBox.right>railBox.right)rail.scrollLeft+=tabBox.right-railBox.right;
+}
 function showTab(id) {
  visibleTab=id;
  document.querySelectorAll('.view').forEach(el=>el.hidden=el.id!=='view-'+id);
@@ -98,8 +107,10 @@ function showTab(id) {
   if(active)el.setAttribute('aria-current','page');
   else el.removeAttribute('aria-current');
  });
+ keepActiveTabVisible();
 }
 document.querySelectorAll('.tab').forEach(el=>el.addEventListener('click',()=>showTab(el.dataset.view)));
+window.addEventListener('resize',keepActiveTabVisible);
 $('footer-help').addEventListener('click',()=>$('help-dialog').showModal());
 document.addEventListener('pointerdown',event=>{
  const menu=$('view-menu');
@@ -195,6 +206,7 @@ function renderWarnings(){
  warnings.forEach((item,index)=>{
   const b=node('button',null,'warning-card'+(selectedWarning===index?' active':''));
   b.type='button';
+  b.setAttribute('aria-pressed',String(selectedWarning===index));
   b.append(node('span',item.severity,'pill '+item.severity.toLowerCase()));
   b.append(node('strong',item.title));
   b.append(node('small',item.period+(item.difference?' · Difference '+item.difference:'')+
@@ -204,7 +216,17 @@ function renderWarnings(){
  if(selectedWarning>=warnings.length)selectedWarning=-1;
  if(selectedWarning>=0)showWarningDetail(warnings[selectedWarning]);
 }
-function selectWarning(index){selectedWarning=index;renderWarnings();}
+function selectWarning(index) {
+ selectedWarning=index;
+ // Preserve keyboard focus: replacing a clicked button would detach it.
+ document.querySelectorAll('#warning-list .warning-card').forEach((card,n)=>{
+  const active=n===index;
+  card.classList.toggle('active',active);
+  card.setAttribute('aria-pressed',String(active));
+ });
+ const warning=(state.warnings||[])[index];
+ if(warning)showWarningDetail(warning);
+}
 function showWarningDetail(w) {
  $('warning-title').textContent=w.title;
  const provenance=[];
