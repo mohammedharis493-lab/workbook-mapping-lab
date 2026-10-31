@@ -116,6 +116,14 @@ try {
   await page.screenshot({ path: 'test-artifacts/synthetic-warning-wide.png', animations: 'disabled', scale: 'css' });
 
   await page.setViewportSize({ width: 320, height: 760 });
+  await page.waitForFunction(() => {
+    const rail=document.querySelector('.tabs');
+    const active=rail?.querySelector('.tab.active');
+    if(!active)return false;
+    const railBounds=rail.getBoundingClientRect();
+    const activeBounds=active.getBoundingClientRect();
+    return activeBounds.left>=railBounds.left-1 && activeBounds.right<=railBounds.right+1;
+  }, null, { timeout: 3000 });
   const narrow = await page.evaluate(() => {
     const row = document.querySelector('.evidence-line');
     const first = row?.children[0]?.getBoundingClientRect();
@@ -132,7 +140,7 @@ try {
     'Warnings page must not create document-wide horizontal overflow at 320 CSS px: ' + JSON.stringify(narrow));
   assert.ok(narrow.amountTop >= narrow.labelBottom - 1,
     'Evidence must stack rather than overlap at 320 CSS px: ' + JSON.stringify(narrow));
-  await page.screenshot({ path: 'test-artifacts/synthetic-warning-narrow.png', animations: 'disabled', scale: 'css' });
+  await page.screenshot({ path: 'test-artifacts/synthetic-warning-narrow.png', animations: 'disabled', scale: 'css', fullPage: true });
 
   await page.locator('.tab[data-view="mapping"]').click();
   const mappingRow = page.locator('#mapping-table tbody tr[data-id]').first();
@@ -149,7 +157,7 @@ try {
     'Mapping table must scroll within its own area without page-wide overflow');
 
   assert.deepEqual(externalRequests, [], 'The local UI must not call external origins');
-  console.log('SYNTHETIC_BROWSER_PASS: warning focus, ARIA, 320 CSS-pixel reflow, mapping focus, no external calls');
+  console.log('SYNTHETIC_BROWSER_PASS: warning focus, ARIA, 320 CSS-pixel reflow and active step, mapping focus, no external calls');
   console.log('No actual Chrome 200% zoom or client data was tested.');
 } finally {
   if (browser) await browser.close();
